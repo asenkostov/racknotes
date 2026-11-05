@@ -9,6 +9,7 @@
   "workers_dev": false,
   // Every non-main branch gets its own preview URL (behind Cloudflare Access) for testing.
   "preview_urls": true,
+  "previews": {},
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
