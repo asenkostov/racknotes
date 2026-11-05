@@ -1,0 +1,14 @@
+{
+  // Cloudflare Worker: serves the built PWA from dist/ and the API under /api/*.
+  // Milestone 1 has no database yet; D1 and R2 bindings arrive with sync (milestone 2).
+  "name": "racknotes",
+  "main": "src/worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "observability": { "enabled": true }
+}
