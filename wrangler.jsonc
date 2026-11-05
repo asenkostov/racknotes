@@ -7,6 +7,8 @@
   // Production address; Cloudflare creates the DNS record on deploy.
   "routes": [{ "pattern": "racknotes.asenkostov.eu", "custom_domain": true }],
   "workers_dev": false,
+  // Every non-main branch gets its own preview URL (behind Cloudflare Access) for testing.
+  "preview_urls": true,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
