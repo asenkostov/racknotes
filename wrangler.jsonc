@@ -5,10 +5,10 @@
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-11-01",
   // Production address; Cloudflare creates the DNS record on deploy.
-  "routes": [{ "pattern": "racknotes.asenkostov.eu", "custom_domain": true }],
+  // Branch previews: https://<branch>.racknotes.asenkostov.eu (same Access policy).
+  "routes": [{ "pattern": "racknotes.asenkostov.eu", "custom_domain": true, "previews_enabled": true }],
   "workers_dev": false,
-  // Every non-main branch gets its own preview URL (behind Cloudflare Access) for testing.
-  "preview_urls": true,
+  "preview_urls": false,
   "previews": {},
   "assets": {
     "directory": "./dist",
