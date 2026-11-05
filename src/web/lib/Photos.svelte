@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { OwnerKind, Photo } from '../../core/model.ts';
   import { meta } from '../../core/model.ts';
-  import { db } from './db.ts';
+  import { db, deletePhoto, save } from './db.ts';
+  import { fetchPhotoBlob, sha256Hex } from './sync.svelte.ts';
   import { live } from './live.svelte.ts';
   import { compressPhoto } from './photo.ts';
   import { toast } from './ui.svelte.ts';
@@ -19,7 +20,10 @@
   $effect(() => {
     const list = photos.value ?? [];
     const next: Record<string, string> = {};
-    for (const p of list) next[p.id] = URL.createObjectURL(p.blob);
+    for (const p of list) {
+      if (p.blob) next[p.id] = URL.createObjectURL(p.blob);
+      else fetchPhotoBlob(p);
+    }
     urls = next;
     return () => Object.values(next).forEach(u => URL.revokeObjectURL(u));
   });
@@ -36,7 +40,8 @@
     try {
       for (const f of files) {
         const { blob, width, height } = await compressPhoto(f);
-        await db.photos.put({ ...meta(), surveyId, ownerKind, ownerId, blob, width, height });
+        const hash = await sha256Hex(blob);
+        await save('photos', { ...meta(), surveyId, ownerKind, ownerId, blob, hash, mime: blob.type || 'image/jpeg', width, height });
       }
       toast(files.length === 1 ? 'Снимката е запазена.' : `${files.length} снимки са запазени.`);
     } catch (err) {
@@ -54,7 +59,7 @@
 
   async function remove() {
     if (!current || !confirm('Да изтрия ли снимката?')) return;
-    await db.photos.delete(current.id);
+    await deletePhoto(current.id);
     viewer.close();
   }
 </script>
@@ -62,7 +67,7 @@
 <div class="photos">
   {#each photos.value ?? [] as p (p.id)}
     <button type="button" class="thumb" onclick={() => show(p)} aria-label="Отвори снимката">
-      <img src={urls[p.id]} alt="" />
+      {#if urls[p.id]}<img src={urls[p.id]} alt="" />{:else}<span class="add" style="cursor: default">…</span>{/if}
     </button>
   {/each}
   <button type="button" class="add" onclick={() => input.click()} disabled={busy}>

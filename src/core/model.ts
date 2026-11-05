@@ -13,6 +13,8 @@ export interface Meta {
   updatedAt: string;
   /** NetBox object id once the record exists in NetBox (milestone 4). */
   netboxId?: number;
+  /** Server version this copy corresponds to; absent until first synced. Local only. */
+  version?: number;
 }
 
 /** One visit to one client site. NetBox: Tenant + Site. */
@@ -73,9 +75,15 @@ export interface Photo extends Meta {
   surveyId: Id;
   ownerKind: OwnerKind;
   ownerId: Id;
-  blob: Blob;
+  /** SHA-256 of the JPEG; the photo's identity on the server. */
+  hash: string;
+  mime: string;
   width: number;
   height: number;
+  /** The image itself. Absent on devices that have not downloaded it yet. Local only. */
+  blob?: Blob;
+  /** Local only: the blob is on the server. */
+  uploaded?: boolean;
 }
 
 export const now = () => new Date().toISOString();

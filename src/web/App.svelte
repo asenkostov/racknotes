@@ -1,6 +1,7 @@
 <script lang="ts">
   import { router } from './lib/router.svelte.ts';
   import { ui, loadIdentity } from './lib/ui.svelte.ts';
+  import { startSync } from './lib/sync.svelte.ts';
   import Home from './views/Home.svelte';
   import SurveyView from './views/Survey.svelte';
   import RackView from './views/Rack.svelte';
@@ -8,6 +9,7 @@
   import Settings from './views/Settings.svelte';
 
   loadIdentity();
+  startSync();
 </script>
 
 <div class="app">

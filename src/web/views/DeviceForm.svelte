@@ -3,7 +3,7 @@
   import type { Device, Face, VerifyStatus } from '../../core/model.ts';
   import { meta, now } from '../../core/model.ts';
   import { fittingPositions, placementError, uLabel } from '../../core/rack.ts';
-  import { db, deleteDevice, save } from '../lib/db.ts';
+  import { db, deleteDevice, discardPhotos, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast } from '../lib/ui.svelte.ts';
@@ -132,7 +132,7 @@
 
   // A new device that was never saved should not leave orphan photos behind.
   onDestroy(() => {
-    if (isNew && !saved && form) db.photos.where('[ownerKind+ownerId]').equals(['device', form.id]).delete();
+    if (isNew && !saved && form) discardPhotos('device', form.id);
   });
 
   // --- serial number from barcode (Chrome on Android; not available in iOS Safari) ---
