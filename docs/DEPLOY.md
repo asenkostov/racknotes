@@ -38,3 +38,11 @@ npm ci && npm run build
 npx wrangler dev            # http://localhost:8787
 npx wrangler deploy         # ръчен deploy (изисква `npx wrangler login`)
 ```
+
+## Тестови версии по клонове
+
+Всеки клон, различен от `main`, се качва като отделна тестова версия на
+`https://<име-на-клона>.racknotes.asenkostov.eu` (точките и наклонените черти в името стават тирета),
+зад същата Access политика. `main` е основната версия на `https://racknotes.asenkostov.eu`.
+
+Настройката е в `wrangler.jsonc`: `previews_enabled: true` на домейна и празен блок `previews`.
