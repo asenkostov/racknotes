@@ -4,6 +4,9 @@
   "name": "racknotes",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-11-01",
+  // Production address; Cloudflare creates the DNS record on deploy.
+  "routes": [{ "pattern": "racknotes.asenkostov.eu", "custom_domain": true }],
+  "workers_dev": false,
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",

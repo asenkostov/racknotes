@@ -9,7 +9,7 @@
 3. Настройки на build-а:
    - Build command: `npm ci && npm run build`
    - Deploy command: `npx wrangler deploy`
-4. **Deploy**. Получаваш адрес от вида `https://racknotes.<акаунт>.workers.dev`.
+4. **Deploy**. Адресът е `https://racknotes.asenkostov.eu` (зададен в `wrangler.jsonc` → `routes`; DNS записът се създава автоматично).
 
 Всеки push в `main` прави нов deploy автоматично.
 
@@ -22,7 +22,7 @@
 3. **Zero Trust** → **Settings** → **Authentication** → провери, че **One-time PIN** е включен.
 4. Session duration: например 7 дни, за да не се влиза всеки ден на терен.
 
-Входът е с код по имейл — без O365 и без лицензи. Безплатно е до 50 потребители. Политиката е закачена за самия Worker, така че покрива и workers.dev адреса, и собствен домейн, ако добавиш такъв.
+Входът е с код по имейл — без O365 и без лицензи. Безплатно е до 50 потребители. Политиката е закачена за самия Worker, така че покрива всеки негов адрес.
 
 ## 3. На телефона
 
