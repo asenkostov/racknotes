@@ -21,6 +21,7 @@
     rooms: 'Помещение',
     racks: 'Шкаф',
     devices: 'Устройство',
+    cables: 'Кабел',
     photos: 'Снимка'
   };
   const fieldLabel: Record<string, string> = {

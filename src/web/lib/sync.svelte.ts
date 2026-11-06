@@ -71,7 +71,7 @@ async function uploadPhotos(entries: OutboxEntry[]) {
 
 async function applyResponse(sent: OutboxEntry[], r: SyncResponse) {
   const sentBy = new Map(sent.map(e => [e.table + ':' + e.id, e]));
-  const tables = [db.surveys, db.floors, db.rooms, db.racks, db.devices, db.photos, db.outbox, db.conflicts, db.kv];
+  const tables = [db.surveys, db.floors, db.rooms, db.racks, db.devices, db.cables, db.photos, db.outbox, db.conflicts, db.kv];
   await db.transaction('rw', tables, async () => {
     // 1. Our changes the server accepted.
     for (const a of r.applied) {

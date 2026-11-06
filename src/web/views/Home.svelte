@@ -67,6 +67,8 @@
     <Icon name="plus" size={20} /> Нов оглед
   </button>
 
+  <a class="btn block" href="#/import" style="border-color: #C7D0CD">Внос от NetBox</a>
+
   <div class="section-title">Огледи</div>
   {#if surveys.loaded && !surveys.value?.length}
     <div class="empty">Още няма огледи. Започни с „Нов оглед“.</div>

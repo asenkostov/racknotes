@@ -2,6 +2,7 @@
 export type Route =
   | { name: 'home' }
   | { name: 'settings' }
+  | { name: 'import' }
   | { name: 'survey'; id: string }
   | { name: 'rack'; id: string }
   | { name: 'device'; id: string; params: URLSearchParams };
@@ -14,6 +15,7 @@ function parse(hash: string): Route {
   if (parts[0] === 'r' && parts[1]) return { name: 'rack', id: parts[1] };
   if (parts[0] === 'd' && parts[1]) return { name: 'device', id: parts[1], params };
   if (parts[0] === 'settings') return { name: 'settings' };
+  if (parts[0] === 'import') return { name: 'import' };
   return { name: 'home' };
 }
 

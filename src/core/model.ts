@@ -67,6 +67,30 @@ export interface Device extends Meta {
   mgmtIp: string;
   status: VerifyStatus;
   notes: string;
+  /** Set for devices installed in a bay of another device (blades in a chassis). NetBox: parent_device. */
+  parentId?: Id;
+}
+
+/** NetBox: Cable. Each end is a port on a device in this survey, or something outside it (another rack, a power feed). */
+export type PortKind = 'interface' | 'frontport' | 'rearport' | 'powerport' | 'poweroutlet' | 'powerfeed' | 'consoleport' | 'consoleserverport' | 'circuittermination' | 'other';
+
+export interface CableEnd {
+  /** Device in this survey, if the end is on one. */
+  deviceId?: Id;
+  /** Name of the device or object when it is outside this survey (e.g. a switch in another rack, a power feed). */
+  external?: string;
+  port: string;
+  kind: PortKind;
+}
+
+export interface Cable extends Meta {
+  surveyId: Id;
+  label: string;
+  type: 'data' | 'power';
+  a: CableEnd;
+  b: CableEnd;
+  status: VerifyStatus;
+  notes: string;
 }
 
 export type OwnerKind = 'survey' | 'room' | 'rack' | 'device';

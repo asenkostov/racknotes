@@ -155,6 +155,36 @@
   }
 
   const stamp = (iso: string) => new Date(iso).toLocaleString('bg-BG');
+
+  // Read-only context for an existing device: what it is installed in, what is installed in it, and its cables.
+  const related = live(
+    () => (isNew ? '' : id),
+    async did => {
+      if (!did) return null;
+      const self = await db.devices.get(did);
+      const [parent, children, a, b] = await Promise.all([
+        self?.parentId ? db.devices.get(self.parentId) : undefined,
+        db.devices.where('parentId').equals(did).sortBy('name'),
+        db.cables.where('a.deviceId').equals(did).toArray(),
+        db.cables.where('b.deviceId').equals(did).toArray()
+      ]);
+      const cables = [...a.map(c => ({ c, mine: c.a, other: c.b })), ...b.map(c => ({ c, mine: c.b, other: c.a }))];
+      const otherIds = [...new Set(cables.map(x => x.other.deviceId).filter((v): v is string => !!v))];
+      const names = new Map((await db.devices.bulkGet(otherIds)).filter(Boolean).map(d => [d!.id, d!.name || d!.model]));
+      const rows = cables
+        .map(x => ({
+          id: x.c.id,
+          label: x.c.label,
+          power: x.c.type === 'power',
+          port: x.mine.port,
+          to: x.other.deviceId ? (names.get(x.other.deviceId) ?? 'изтрито устройство') : (x.other.external ?? '—'),
+          toId: x.other.deviceId && names.has(x.other.deviceId) ? x.other.deviceId : '',
+          toPort: x.other.port
+        }))
+        .sort((p, q) => Number(p.power) - Number(q.power) || p.port.localeCompare(q.port, 'en', { numeric: true }));
+      return { parent, children, rows };
+    }
+  );
 </script>
 
 <header class="topbar">
@@ -227,6 +257,35 @@
         <span style="font-size: 13px; font-weight: 600; color: var(--muted)">Снимки (етикет, лице, гръб)</span>
         <Photos surveyId={form.surveyId} ownerKind="device" ownerId={form.id} />
       </div>
+
+      {#if related.value?.parent}
+        <p class="muted" style="margin: 0">Монтирано в <a href={'#/d/' + related.value.parent.id}>{related.value.parent.name}</a></p>
+      {/if}
+      {#if related.value?.children.length}
+        <div class="field">
+          <span style="font-size: 13px; font-weight: 600; color: var(--muted)">В шасито ({related.value.children.length})</span>
+          <div class="list">
+            {#each related.value.children as ch (ch.id)}
+              <a href={'#/d/' + ch.id}><span><b>{ch.name}</b><br /><span class="muted">{ch.model}{ch.serial ? ' · ' + ch.serial : ''}</span></span><Icon name="chevron" size={16} /></a>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      {#if related.value?.rows.length}
+        <div class="field">
+          <span style="font-size: 13px; font-weight: 600; color: var(--muted)">Връзки ({related.value.rows.length})</span>
+          <div class="list">
+            {#each related.value.rows as r (r.id)}
+              <div style="font-size: 14px">
+                <span style="min-width: 0">
+                  <span class="mono">{r.port}</span> → {#if r.toId}<a href={'#/d/' + r.toId}>{r.to}</a>{:else}{r.to}{/if} <span class="mono">{r.toPort}</span><br />
+                  <span class="muted" style="font-size: 12px">{r.power ? 'захранване' : 'данни'} · {r.label}</span>
+                </span>
+              </div>
+            {/each}
+          </div>
+        </div>
+      {/if}
 
       {#if error}<p class="error" role="alert">{error}</p>{/if}
       {#if !isNew}

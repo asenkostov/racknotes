@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable, type Transaction } from 'dexie';
-import type { Device, Floor, Photo, Rack, Room, Survey } from '../../core/model.ts';
+import type { Cable, Device, Floor, Photo, Rack, Room, Survey } from '../../core/model.ts';
 import { now } from '../../core/model.ts';
 import type { ServerRecord, SyncTable } from '../../core/sync.ts';
 import { SYNC_TABLES } from '../../core/sync.ts';
@@ -30,6 +30,7 @@ export class RackDb extends Dexie {
   rooms!: EntityTable<Room, 'id'>;
   racks!: EntityTable<Rack, 'id'>;
   devices!: EntityTable<Device, 'id'>;
+  cables!: EntityTable<Cable, 'id'>;
   photos!: EntityTable<Photo, 'id'>;
   outbox!: Dexie.Table<OutboxEntry, [string, string]>;
   conflicts!: Dexie.Table<Conflict, [string, string]>;
@@ -52,10 +53,19 @@ export class RackDb extends Dexie {
         // Everything entered before sync existed is queued once, so it reaches the server.
         let n = Date.now();
         for (const t of SYNC_TABLES) {
+          if (t === 'cables') continue; // introduced in version 3
           const rows = await tx.table(t).toArray();
           await tx.table('outbox').bulkPut(rows.map(r => ({ table: t, id: r.id, deleted: false, baseVersion: 0, queuedAt: n++ })));
         }
       });
+    this.version(3).stores({
+      ...v1,
+      devices: 'id, surveyId, rackId, status, parentId',
+      cables: 'id, surveyId, a.deviceId, b.deviceId',
+      outbox: '[table+id], queuedAt',
+      conflicts: '[table+id]',
+      kv: 'key'
+    });
   }
 }
 
@@ -100,11 +110,11 @@ async function removeAll(table: SyncTable, rows: { id: string; version?: number 
   await db.table(table).bulkDelete(rows.map(r => r.id));
 }
 
-const allTables = () => [db.surveys, db.floors, db.rooms, db.racks, db.devices, db.photos, db.outbox];
+const allTables = () => [db.surveys, db.floors, db.rooms, db.racks, db.devices, db.cables, db.photos, db.outbox];
 
 export async function deleteSurvey(id: string) {
   await db.transaction('rw', allTables(), async () => {
-    for (const t of ['photos', 'devices', 'racks', 'rooms', 'floors'] as const)
+    for (const t of ['photos', 'cables', 'devices', 'racks', 'rooms', 'floors'] as const)
       await removeAll(t, await db.table(t).where('surveyId').equals(id).toArray());
     const s = await db.surveys.get(id);
     if (s) await removeAll('surveys', [s]);
@@ -124,11 +134,28 @@ export async function deleteRack(id: string) {
   notify();
 }
 
+/** Delete a device, the devices installed in it (blades) and their photos. Cables stay and show the end as removed. */
 export async function deleteDevice(id: string) {
   await db.transaction('rw', allTables(), async () => {
-    await removeAll('photos', await db.photos.where('[ownerKind+ownerId]').equals(['device', id]).toArray());
+    const children = await db.devices.where('parentId').equals(id).toArray();
+    for (const d of [...children, { id }]) await removeAll('photos', await db.photos.where('[ownerKind+ownerId]').equals(['device', d.id]).toArray());
+    await removeAll('devices', children);
     const d = await db.devices.get(id);
     if (d) await removeAll('devices', [d]);
+  });
+  notify();
+}
+
+/** Write many records at once (import). Existing local copies keep their server version as the base. */
+export async function saveMany(batches: { table: SyncTable; rows: { id: string }[] }[]) {
+  const tables = [...new Set(batches.map(b => db.table(b.table)))];
+  await db.transaction('rw', [...tables, db.outbox], async () => {
+    for (const { table, rows } of batches) {
+      const t = db.table(table);
+      const existing = new Map((await t.bulkGet(rows.map(r => r.id))).filter(Boolean).map((r: { id: string; version?: number }) => [r.id, r]));
+      await t.bulkPut(rows.map(r => ({ ...r, version: existing.get(r.id)?.version })));
+      for (const r of rows) await enqueue(table, r.id, false, existing.get(r.id)?.version);
+    }
   });
   notify();
 }

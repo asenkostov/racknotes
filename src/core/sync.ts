@@ -5,7 +5,7 @@
 // is still current, otherwise it reports a conflict. Every applied change gets a
 // global, increasing `seq`, so each device pulls only what it has not seen.
 
-export const SYNC_TABLES = ['surveys', 'floors', 'rooms', 'racks', 'devices', 'photos'] as const;
+export const SYNC_TABLES = ['surveys', 'floors', 'rooms', 'racks', 'devices', 'cables', 'photos'] as const;
 export type SyncTable = (typeof SYNC_TABLES)[number];
 
 /** Fields that never leave the device. */

@@ -8,6 +8,7 @@
   import RackView from './views/Rack.svelte';
   import DeviceForm from './views/DeviceForm.svelte';
   import Settings from './views/Settings.svelte';
+  import Import from './views/Import.svelte';
 
   loadIdentity();
   startSync();
@@ -23,6 +24,8 @@
     {#key router.route.id + router.route.params.toString()}<DeviceForm id={router.route.id} params={router.route.params} />{/key}
   {:else if router.route.name === 'settings'}
     <Settings />
+  {:else if router.route.name === 'import'}
+    <Import />
   {:else}
     <Home />
   {/if}

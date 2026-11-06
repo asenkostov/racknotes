@@ -4,7 +4,7 @@ import { requestSync } from './sync.svelte.ts';
 // Full local backup as one JSON file (photos inlined as data URLs).
 // Until sync exists (milestone 2) this is the way to move data between devices.
 
-const tables = ['surveys', 'floors', 'rooms', 'racks', 'devices', 'photos'] as const;
+const tables = ['surveys', 'floors', 'rooms', 'racks', 'devices', 'cables', 'photos'] as const;
 const FORMAT = 'racknotes-backup';
 
 const toDataUrl = (blob: Blob) =>

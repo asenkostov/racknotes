@@ -26,7 +26,8 @@
   const devices = $derived(data.value?.devices ?? []);
   const segments = $derived(rack ? elevation(rack.uHeight, devices, face) : []);
   const byId = $derived(new Map(devices.map(d => [d.id, d])));
-  const unracked = $derived(devices.filter(d => d.position === 0));
+  const unracked = $derived(devices.filter(d => d.position === 0 && !d.parentId));
+  const childCount = $derived(devices.reduce((m, d) => (d.parentId ? m.set(d.parentId, (m.get(d.parentId) ?? 0) + 1) : m), new Map<string, number>()));
   const PX_PER_U = 22;
 
   let editOpen = $state(false);
@@ -97,7 +98,7 @@
           <a class="u-block device {d.status}" style="min-height: {Math.max(28, (seg.top - seg.bottom + 1) * PX_PER_U)}px" href={'#/d/' + d.id}>
             <span class="u">{uLabel(seg.top, seg.bottom)}</span>
             <span class="name">{d.name || d.model || 'без име'}{d.model && d.name ? ' · ' + d.model : ''}</span>
-            <span class="meta">{d.face !== face ? 'от другата страна' : d.status === 'check' ? 'провери' : ''}</span>
+            <span class="meta">{d.face !== face ? 'от другата страна' : d.status === 'check' ? 'провери' : childCount.get(d.id) ? `${childCount.get(d.id)} в шаси` : ''}</span>
           </a>
         {/if}
       {/each}
