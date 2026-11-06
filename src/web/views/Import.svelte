@@ -10,6 +10,7 @@
     racks: 'Шкафове',
     devices: 'Устройства',
     'device-types': 'Типове устройства',
+    'device-roles': 'Роли (цветове)',
     cables: 'Кабели',
     'power-feeds': 'Захранващи линии',
     interfaces: 'Интерфейси (засега не се ползват)',
@@ -97,7 +98,7 @@
 
 <main>
   <div class="card">
-    <p class="muted" style="margin: 0">Нужни са <b>шкафовете</b>; препоръчително и <b>устройствата</b>, <b>типовете устройства</b> и <b>кабелите</b>. Захранващите линии дават имената на захранването. Файловете се разпознават сами — може да ги избереш наведнъж.</p>
+    <p class="muted" style="margin: 0">Нужни са <b>шкафовете</b>; препоръчително и <b>устройствата</b>, <b>типовете устройства</b> и <b>кабелите</b>. Захранващите линии дават имената на захранването, ролите — цветовете в шкафа. Файловете се разпознават сами — може да ги избереш наведнъж.</p>
     <button class="btn dark" onclick={() => input.click()}><Icon name="plus" size={18} /> Избери файлове</button>
     <input bind:this={input} type="file" accept=".json,.txt,application/json,text/plain" multiple hidden onchange={pick} />
   </div>

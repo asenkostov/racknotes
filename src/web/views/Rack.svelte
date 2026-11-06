@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Face } from '../../core/model.ts';
-  import { elevation, uLabel, usedUnits } from '../../core/rack.ts';
+  import { usedUnits } from '../../core/rack.ts';
   import { db, deleteRack, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
@@ -8,6 +8,8 @@
   import Icon from '../lib/Icon.svelte';
   import Sheet from '../lib/Sheet.svelte';
   import Photos from '../lib/Photos.svelte';
+  import RackElevation from '../lib/RackElevation.svelte';
+  import { roleColors } from '../../core/roles.ts';
 
   let { id }: { id: string } = $props();
 
@@ -24,11 +26,19 @@
   let face = $state<Face>('front');
   const rack = $derived(data.value?.rack);
   const devices = $derived(data.value?.devices ?? []);
-  const segments = $derived(rack ? elevation(rack.uHeight, devices, face) : []);
-  const byId = $derived(new Map(devices.map(d => [d.id, d])));
   const unracked = $derived(devices.filter(d => d.position === 0 && !d.parentId));
   const childCount = $derived(devices.reduce((m, d) => (d.parentId ? m.set(d.parentId, (m.get(d.parentId) ?? 0) + 1) : m), new Map<string, number>()));
-  const PX_PER_U = 22;
+  // Two faces side by side when there is room; one face with a toggle on phones.
+  let wide = $state(matchMedia('(min-width: 760px)').matches);
+  $effect(() => {
+    const mq = matchMedia('(min-width: 760px)');
+    const on = () => (wide = mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  });
+  const legend = $derived(
+    [...new Map(devices.filter(d => !d.parentId && d.position > 0).map(d => [d.role || '—', roleColors(d.role, d.roleColor).bg])).entries()].sort((a, b) => a[0].localeCompare(b[0], 'bg'))
+  );
 
   let editOpen = $state(false);
   let photosOpen = $state(false);
@@ -66,10 +76,10 @@
         <div class="title">{rack.name}</div>
         <div class="sub">{data.value?.room?.name ?? ''} · {rack.uHeight}U · {usedUnits(rack.uHeight, devices)} заети</div>
       </div>
-      <div class="segmented" role="group" aria-label="Страна на шкафа">
+      {#if !wide}<div class="segmented" role="group" aria-label="Страна на шкафа">
         <button aria-pressed={face === 'front'} onclick={() => (face = 'front')}>Лице</button>
         <button aria-pressed={face === 'rear'} onclick={() => (face = 'rear')}>Гръб</button>
-      </div>
+      </div>{/if}
     </div>
   {/if}
 </header>
@@ -79,29 +89,18 @@
 {:else if rack}
   <main>
     <div class="legend">
-      <span><i style="background: var(--ink)"></i>Потвърдено</span>
-      <span><i style="background: var(--check); border: 1px solid var(--accent)"></i>За проверка</span>
-      <span><i style="border: 1px dashed #8A979C"></i>Свободно · докосни за добавяне</span>
+      {#each legend as [role, bg]}<span><i style="background: {bg}"></i>{role}</span>{/each}
+      <span><i style="box-shadow: inset 0 0 0 2px var(--accent)"></i>За проверка</span>
+      <span><i style="background: repeating-linear-gradient(45deg, #c9d2cf 0 2px, #fff 2px 4px); border: 1px solid #8a979c"></i>Монтирано от другата страна</span>
     </div>
 
-    <div class="rack">
-      {#each segments as seg (seg.kind + seg.top)}
-        {#if seg.kind === 'free'}
-          <a class="u-block free" style="min-height: {Math.max(28, Math.min(seg.top - seg.bottom + 1, 6) * PX_PER_U)}px"
-            href={`#/d/new?rack=${rack.id}&top=${seg.top}&bottom=${seg.bottom}&face=${face}`}>
-            <span class="u">{uLabel(seg.top, seg.bottom)}</span>
-            <span class="name" style="font-weight: 400">Свободно · {seg.top - seg.bottom + 1}U</span>
-            <Icon name="plus" size={16} />
-          </a>
-        {:else}
-          {@const d = byId.get(seg.id)!}
-          <a class="u-block device {d.status}" style="min-height: {Math.max(28, (seg.top - seg.bottom + 1) * PX_PER_U)}px" href={'#/d/' + d.id}>
-            <span class="u">{uLabel(seg.top, seg.bottom)}</span>
-            <span class="name">{d.name || d.model || 'без име'}{d.model && d.name ? ' · ' + d.model : ''}</span>
-            <span class="meta">{d.face !== face ? 'от другата страна' : d.status === 'check' ? 'провери' : childCount.get(d.id) ? `${childCount.get(d.id)} в шаси` : ''}</span>
-          </a>
-        {/if}
-      {/each}
+    <div style="display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start">
+      {#if wide}
+        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} label="Лице" />
+        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} label="Гръб" />
+      {:else}
+        <RackElevation {rack} {devices} {face} uPx={20} {childCount} />
+      {/if}
     </div>
 
     <div class="section-title">

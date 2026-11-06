@@ -69,6 +69,8 @@ export interface Device extends Meta {
   notes: string;
   /** Set for devices installed in a bay of another device (blades in a chassis). NetBox: parent_device. */
   parentId?: Id;
+  /** Role colour from NetBox (hex without #), used in the rack view. */
+  roleColor?: string;
 }
 
 /** NetBox: Cable. Each end is a port on a device in this survey, or something outside it (another rack, a power feed). */

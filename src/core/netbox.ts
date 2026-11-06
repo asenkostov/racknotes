@@ -11,7 +11,7 @@ import { placementError } from './rack.ts';
 
 type Json = Record<string, any>;
 
-export type NetboxKind = 'racks' | 'devices' | 'device-types' | 'cables' | 'power-feeds' | 'interfaces' | 'locations' | 'unknown';
+export type NetboxKind = 'racks' | 'devices' | 'device-types' | 'device-roles' | 'cables' | 'power-feeds' | 'interfaces' | 'locations' | 'unknown';
 
 export interface NetboxFile {
   kind: NetboxKind;
@@ -36,6 +36,7 @@ const KIND_BY_PATH: Record<string, NetboxKind> = {
   'dcim/racks': 'racks',
   'dcim/devices': 'devices',
   'dcim/device-types': 'device-types',
+  'dcim/device-roles': 'device-roles',
   'dcim/cables': 'cables',
   'dcim/power-feeds': 'power-feeds',
   'dcim/interfaces': 'interfaces',
@@ -80,6 +81,7 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
   const typesJ = of('device-types');
   const cablesJ = of('cables');
   const feedsJ = of('power-feeds');
+  const roleColor = new Map(of('device-roles').map(r => [r.id, typeof r.color === 'string' ? r.color : '']));
   const warnings: string[] = [];
 
   for (const f of files) if (!f.complete) warnings.push(`Файлът с ${f.kind} е непълен (${f.results.length} от ${f.count}); отвори и следващата страница или добави limit=0.`);
@@ -168,7 +170,8 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
       mgmtIp: ip(d.primary_ip4) || ip(d.primary_ip) || ip(d.oob_ip),
       status: 'confirmed',
       notes: d.description ?? '',
-      ...(d.parent_device ? { parentId: `nb-device-${d.parent_device.id}` } : {})
+      ...(d.parent_device ? { parentId: `nb-device-${d.parent_device.id}` } : {}),
+      ...(roleColor.get(d.role?.id) ? { roleColor: roleColor.get(d.role?.id) } : {})
     });
   }
 

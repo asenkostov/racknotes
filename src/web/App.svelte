@@ -15,7 +15,7 @@
   startPwa();
 </script>
 
-<div class="app">
+<div class="app" class:wide={router.route.name === 'rack'}>
   {#if router.route.name === 'survey'}
     {#key router.route.id}<SurveyView id={router.route.id} />{/key}
   {:else if router.route.name === 'rack'}
