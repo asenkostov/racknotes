@@ -12,12 +12,12 @@
   "preview_urls": false,
   "d1_databases": [
     { "binding": "DB", "database_name": "racknotes", "database_id": "f38c6171-3c1e-4d0c-ac5b-fce70673b0bb" },
-    { "binding": "PHOTOS", "database_name": "racknotes-photos", "database_id": "PHOTOS_DB_ID" }
+    { "binding": "PHOTOS", "database_name": "racknotes-photos-eu", "database_id": "c143bd3c-d8f8-41f5-8e20-b390ae73a904" }
   ],
   "previews": {
     "d1_databases": [
-      { "binding": "DB", "database_name": "racknotes-preview", "database_id": "PREVIEW_DB_ID" },
-      { "binding": "PHOTOS", "database_name": "racknotes-photos-preview", "database_id": "PREVIEW_PHOTOS_DB_ID" }
+      { "binding": "DB", "database_name": "racknotes-preview", "database_id": "ddaddf51-a195-4ded-beae-22159bd81a7a" },
+      { "binding": "PHOTOS", "database_name": "racknotes-photos-preview", "database_id": "a9dc37d0-3bc2-4235-bff4-358538f6261c" }
     ]
   },
   "assets": {
