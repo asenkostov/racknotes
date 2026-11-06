@@ -2,6 +2,7 @@
   import { router } from './lib/router.svelte.ts';
   import { ui, loadIdentity } from './lib/ui.svelte.ts';
   import { startSync } from './lib/sync.svelte.ts';
+  import { applyUpdate, pwa, startPwa } from './lib/pwa.svelte.ts';
   import Home from './views/Home.svelte';
   import SurveyView from './views/Survey.svelte';
   import RackView from './views/Rack.svelte';
@@ -10,6 +11,7 @@
 
   loadIdentity();
   startSync();
+  startPwa();
 </script>
 
 <div class="app">
@@ -27,3 +29,11 @@
 </div>
 
 {#if ui.toast}<div class="toast" role="status">{ui.toast}</div>{/if}
+
+{#if pwa.needRefresh}
+  <div class="update" role="status">
+    <span>Има нова версия на RackNotes.</span>
+    <button class="btn small primary" onclick={applyUpdate} disabled={pwa.updating}>{pwa.updating ? 'Зарежда…' : 'Презареди'}</button>
+    <button class="icon-btn" aria-label="По-късно" onclick={() => (pwa.needRefresh = false)}>✕</button>
+  </div>
+{/if}

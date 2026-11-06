@@ -9,8 +9,10 @@ export default defineConfig({
   plugins: [
     svelte(),
     VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // The app asks before switching to a new version (src/web/lib/pwa.svelte.ts),
+      // so an update never reloads a half-filled form.
+      registerType: 'prompt',
+      injectRegister: false,
       includeAssets: ['icon.svg'],
       manifest: {
         id: '/',
