@@ -13,6 +13,9 @@ export default defineConfig({
       // so an update never reloads a half-filled form.
       registerType: 'prompt',
       injectRegister: false,
+      // Cloudflare Access sits in front of everything: without the session cookie the
+      // manifest request is redirected to the login page and Chrome refuses to install.
+      useCredentials: true,
       includeAssets: ['icon.svg'],
       manifest: {
         id: '/',
