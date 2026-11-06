@@ -5,6 +5,7 @@ export type Route =
   | { name: 'import' }
   | { name: 'survey'; id: string }
   | { name: 'rack'; id: string }
+  | { name: 'room'; id: string }
   | { name: 'device'; id: string; params: URLSearchParams };
 
 function parse(hash: string): Route {
@@ -13,6 +14,7 @@ function parse(hash: string): Route {
   const params = new URLSearchParams(qs);
   if (parts[0] === 's' && parts[1]) return { name: 'survey', id: parts[1] };
   if (parts[0] === 'r' && parts[1]) return { name: 'rack', id: parts[1] };
+  if (parts[0] === 'room' && parts[1]) return { name: 'room', id: parts[1] };
   if (parts[0] === 'd' && parts[1]) return { name: 'device', id: parts[1], params };
   if (parts[0] === 'settings') return { name: 'settings' };
   if (parts[0] === 'import') return { name: 'import' };

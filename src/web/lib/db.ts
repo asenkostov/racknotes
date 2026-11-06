@@ -122,6 +122,22 @@ export async function deleteSurvey(id: string) {
   notify();
 }
 
+/** Delete an empty room (and its photos); drops the floor too when nothing else is on it. */
+export async function deleteRoom(id: string) {
+  await db.transaction('rw', allTables().concat(db.rooms, db.floors), async () => {
+    if (await db.racks.where('roomId').equals(id).count()) throw new Error('В помещението има шкафове.');
+    await removeAll('photos', await db.photos.where('[ownerKind+ownerId]').equals(['room', id]).toArray());
+    const r = await db.rooms.get(id);
+    if (!r) return;
+    await removeAll('rooms', [r]);
+    if (!(await db.rooms.where('floorId').equals(r.floorId).count())) {
+      const f = await db.floors.get(r.floorId);
+      if (f) await removeAll('floors', [f]);
+    }
+  });
+  notify();
+}
+
 export async function deleteRack(id: string) {
   await db.transaction('rw', allTables(), async () => {
     const devices = await db.devices.where('rackId').equals(id).toArray();

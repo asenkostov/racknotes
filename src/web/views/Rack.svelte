@@ -18,8 +18,12 @@
     async rid => {
       const rack = await db.racks.get(rid);
       if (!rack) return null;
-      const [room, devices] = await Promise.all([db.rooms.get(rack.roomId), db.devices.where('rackId').equals(rid).toArray()]);
-      return { rack, room, devices };
+      const [room, devices, rooms] = await Promise.all([
+        db.rooms.get(rack.roomId),
+        db.devices.where('rackId').equals(rid).toArray(),
+        db.rooms.where('surveyId').equals(rack.surveyId).sortBy('name')
+      ]);
+      return { rack, room, devices, rooms };
     }
   );
 
@@ -42,7 +46,7 @@
 
   let editOpen = $state(false);
   let photosOpen = $state(false);
-  let form = $state({ name: '', uHeight: 42, notes: '' });
+  let form = $state({ name: '', uHeight: 42, notes: '', roomId: '' });
 
   async function saveRack(e: SubmitEvent) {
     e.preventDefault();
@@ -50,7 +54,7 @@
     const uHeight = Math.trunc(Number(form.uHeight));
     const highest = Math.max(0, ...devices.map(d => (d.position ? d.position + d.uHeight - 1 : 0)));
     if (uHeight < highest) return toast(`Има устройство до U${highest}; шкафът не може да е по-нисък.`);
-    await save('racks', { ...$state.snapshot(rack), name: form.name.trim() || rack.name, uHeight, notes: form.notes });
+    await save('racks', { ...$state.snapshot(rack), name: form.name.trim() || rack.name, uHeight, notes: form.notes, roomId: form.roomId || rack.roomId });
     editOpen = false;
   }
 
@@ -67,7 +71,7 @@
     <a class="icon-btn" href={rack ? '#/s/' + rack.surveyId : '#/'} aria-label="Назад към огледа" style="margin-left: -10px"><Icon name="back" /></a>
     <div style="display: flex">
       <button class="icon-btn" aria-label="Снимки на шкафа" onclick={() => (photosOpen = true)}><Icon name="camera" /></button>
-      <button class="icon-btn" aria-label="Редактирай шкафа" onclick={() => { if (rack) { form = { name: rack.name, uHeight: rack.uHeight, notes: rack.notes }; editOpen = true; } }}><Icon name="edit" /></button>
+      <button class="icon-btn" aria-label="Редактирай шкафа" onclick={() => { if (rack) { form = { name: rack.name, uHeight: rack.uHeight, notes: rack.notes, roomId: rack.roomId }; editOpen = true; } }}><Icon name="edit" /></button>
     </div>
   </div>
   {#if rack}
@@ -128,6 +132,10 @@
       <div class="grid2">
         <div class="field"><label for="n">Име</label><input id="n" class="mono" bind:value={form.name} required /></div>
         <div class="field"><label for="h">Височина (U)</label><input id="h" type="number" min="1" max="60" bind:value={form.uHeight} /></div>
+      </div>
+      <div class="field">
+        <label for="rm">Помещение</label>
+        <select id="rm" bind:value={form.roomId}>{#each data.value?.rooms ?? [] as r (r.id)}<option value={r.id}>{r.name}</option>{/each}</select>
       </div>
       <div class="field"><label for="no">Бележки</label><textarea id="no" bind:value={form.notes}></textarea></div>
       <button class="btn primary block" type="submit">Запази</button>

@@ -98,6 +98,7 @@ export async function sync(
   if (accepted.length) {
     const now = new Date().toISOString();
     // Insert, or update only if the client's base version is still current.
+    // A deleted record may always be brought back (restore from a file).
     // seq = MAX(seq)+1 is safe: a D1 batch runs as one serialized transaction.
     const stmt = db.prepare(
       `INSERT INTO records (tbl, id, survey_id, data, version, deleted, seq, updated_at, updated_by)
@@ -106,7 +107,7 @@ export async function sync(
          survey_id = excluded.survey_id, data = excluded.data, deleted = excluded.deleted,
          version = records.version + 1, seq = excluded.seq,
          updated_at = excluded.updated_at, updated_by = excluded.updated_by
-       WHERE records.version = ?8
+       WHERE records.version = ?8 OR (records.deleted = 1 AND excluded.deleted = 0)
        RETURNING version`
     );
     const results = await db.batch<{ version: number }>(

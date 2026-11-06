@@ -11,6 +11,7 @@
   import Sheet from '../lib/Sheet.svelte';
   import Status from '../lib/Status.svelte';
   import Photos from '../lib/Photos.svelte';
+  import { downloadBlob, exportSurvey } from '../lib/backup.ts';
 
   let { id }: { id: string } = $props();
 
@@ -91,6 +92,28 @@
     if (survey) await save('surveys', { ...$state.snapshot(survey), notes });
     notesOpen = false;
   }
+  let exporting = $state(false);
+  async function download(thenRemove: boolean) {
+    if (!survey) return;
+    exporting = true;
+    try {
+      const { blob, name } = await exportSurvey(survey.id);
+      downloadBlob(blob, name);
+      toast(`Изтеглен: ${name}`);
+      if (thenRemove) {
+        await new Promise(r => setTimeout(r, 800));
+        if (confirm(`Файлът „${name}“ е изтеглен. Провери, че е в папката с изтеглени файлове.\n\nДа махна ли огледа от сайта и от всички устройства? Може да го възстановиш по-късно от „Внос“ с този файл.`)) {
+          await deleteSurvey(survey.id);
+          go('/');
+        }
+      }
+    } catch (err) {
+      toast((err as Error).message);
+    } finally {
+      exporting = false;
+    }
+  }
+
   async function remove() {
     if (!survey || !confirm(`Да изтрия ли целия оглед „${survey.tenant} · ${survey.site}“? Това не може да се върне.`)) return;
     await deleteSurvey(survey.id);
@@ -131,9 +154,10 @@
         <div class="section-title">{floor.name} · помещения</div>
         <div class="list">
           {#each rooms as room (room.id)}
-            <div>
+            <a href={'#/room/' + room.id}>
               <div><div style="font-weight: 600">{room.name}</div><div class="muted">{plural(racksIn(room.id).length, 'шкаф', 'шкафа')}</div></div>
-            </div>
+              <Icon name="chevron" size={18} />
+            </a>
           {/each}
         </div>
       {/if}
@@ -170,6 +194,14 @@
         <span><span style="font-weight: 600">Бележки</span><br /><span class="muted">{survey.notes || 'няма'}</span></span>
         <Icon name="chevron" size={18} />
       </button>
+    </div>
+    <div class="card">
+      <h3 style="font-size: 15px">Файл</h3>
+      <p class="muted" style="margin: 0">Целият оглед със снимките в един файл. С него може да го възстановиш по-късно от „Внос“, на този или друг сайт.</p>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <button class="btn small dark" onclick={() => download(false)} disabled={exporting}>Изтегли огледа</button>
+        <button class="btn small" onclick={() => download(true)} disabled={exporting}>Изтегли и махни от сайта</button>
+      </div>
     </div>
     <button class="btn danger small" onclick={remove} style="align-self: flex-start"><Icon name="trash" size={18} /> Изтрий огледа</button>
   </main>

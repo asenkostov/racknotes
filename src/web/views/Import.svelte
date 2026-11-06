@@ -2,6 +2,7 @@
   import type { ImportPlan, NetboxFile } from '../../core/netbox.ts';
   import { buildImport, classify } from '../../core/netbox.ts';
   import { db, saveMany } from '../lib/db.ts';
+  import { importBackup, inspectBackup } from '../lib/backup.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast, ui } from '../lib/ui.svelte.ts';
   import Icon from '../lib/Icon.svelte';
@@ -26,11 +27,19 @@
   let busy = $state(false);
   let input: HTMLInputElement;
 
+  // A RackNotes file (survey export or full backup) is restored as is, not mapped.
+  let restore = $state<{ file: File; info: NonNullable<Awaited<ReturnType<typeof inspectBackup>>> } | null>(null);
+
   async function pick(e: Event) {
     const list = Array.from((e.target as HTMLInputElement).files ?? []);
     input.value = '';
     for (const f of list) {
       try {
+        const info = await inspectBackup(f).catch(() => null);
+        if (info) {
+          restore = { file: f, info };
+          continue;
+        }
         const nf = { ...classify(JSON.parse(await f.text())), name: f.name };
         files = [...files.filter(x => x.kind !== nf.kind || nf.kind === 'unknown'), nf];
       } catch (err) {
@@ -49,6 +58,20 @@
       existing = !!(await db.surveys.get(plan.survey.id));
     } catch (err) {
       planError = (err as Error).message;
+    }
+  }
+
+  async function doRestore() {
+    if (!restore) return;
+    busy = true;
+    try {
+      const n = await importBackup(restore.file);
+      toast(`Възстановени ${n} записа.`);
+      go('/');
+    } catch (err) {
+      toast((err as Error).message);
+    } finally {
+      busy = false;
     }
   }
 
@@ -98,10 +121,23 @@
 
 <main>
   <div class="card">
-    <p class="muted" style="margin: 0">Нужни са <b>шкафовете</b>; препоръчително и <b>устройствата</b>, <b>типовете устройства</b> и <b>кабелите</b>. Захранващите линии дават имената на захранването, ролите — цветовете в шкафа. Файловете се разпознават сами — може да ги избереш наведнъж.</p>
+    <p class="muted" style="margin: 0">Тук се зарежда и файл, изтеглен от RackNotes (оглед или архив). За NetBox са нужни <b>шкафовете</b>; препоръчително и <b>устройствата</b>, <b>типовете устройства</b> и <b>кабелите</b>. Захранващите линии дават имената на захранването, ролите — цветовете в шкафа. Файловете се разпознават сами — може да ги избереш наведнъж.</p>
     <button class="btn dark" onclick={() => input.click()}><Icon name="plus" size={18} /> Избери файлове</button>
     <input bind:this={input} type="file" accept=".json,.txt,application/json,text/plain" multiple hidden onchange={pick} />
   </div>
+
+  {#if restore}
+    <div class="card">
+      <h2 style="font-size: 17px">Файл от RackNotes</h2>
+      <p class="muted" style="margin: 0">{restore.info.scope === 'survey' ? 'Оглед' : 'Пълен архив'}{restore.info.exportedAt ? ' · изтеглен ' + new Date(restore.info.exportedAt).toLocaleString('bg-BG') : ''}</p>
+      {#each restore.info.surveys as s}<b>{s}</b>{/each}
+      <p class="muted" style="margin: 0">{restore.info.counts.racks} шкафа · {restore.info.counts.devices} устройства · {restore.info.counts.cables} кабела · {restore.info.counts.photos} снимки</p>
+      <div style="display: flex; gap: 8px">
+        <button class="btn primary" onclick={doRestore} disabled={busy}>{busy ? 'Възстановява…' : 'Възстанови'}</button>
+        <button class="btn" onclick={() => (restore = null)}>Отказ</button>
+      </div>
+    </div>
+  {/if}
 
   {#if files.length}
     <div class="list">

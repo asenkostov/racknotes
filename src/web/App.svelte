@@ -9,6 +9,7 @@
   import DeviceForm from './views/DeviceForm.svelte';
   import Settings from './views/Settings.svelte';
   import Import from './views/Import.svelte';
+  import RoomView from './views/Room.svelte';
 
   loadIdentity();
   startSync();
@@ -18,6 +19,8 @@
 <div class="app" class:wide={router.route.name === 'rack'}>
   {#if router.route.name === 'survey'}
     {#key router.route.id}<SurveyView id={router.route.id} />{/key}
+  {:else if router.route.name === 'room'}
+    {#key router.route.id}<RoomView id={router.route.id} />{/key}
   {:else if router.route.name === 'rack'}
     {#key router.route.id}<RackView id={router.route.id} />{/key}
   {:else if router.route.name === 'device'}
