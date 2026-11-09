@@ -137,7 +137,10 @@
         <b>Задай размери →</b>
       {/if}
     </a>
-    <p class="muted" style="margin: 0; font-size: 13px">Предстои: 3D изглед на помещението и план на етажа от PDF/DWG.</p>
+    {#if room.widthM && room.depthM}
+      <a class="btn block" href={'#/room/' + room.id + '/3d'}>3D изглед на помещението</a>
+    {/if}
+    <p class="muted" style="margin: 0; font-size: 13px">Предстои: план на етажа от PDF/DWG.</p>
   </main>
 
   <Sheet bind:open={editOpen} title="Помещение">
