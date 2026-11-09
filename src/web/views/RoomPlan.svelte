@@ -201,7 +201,12 @@
 <header class="topbar">
   <div class="row">
     <a class="icon-btn" href={'#/room/' + id} aria-label="Назад към помещението" style="margin-left: -10px"><Icon name="back" /></a>
-    {#if room}<button class="btn small" style="background: transparent; color: #fff; border-color: #4e6570" onclick={openSize}>Размери</button>{/if}
+    {#if room}
+      <div style="display: flex; gap: 8px">
+        {#if hasSize}<a class="btn small" style="background: transparent; color: #fff; border-color: #4e6570; text-decoration: none" href={'#/room/' + id + '/3d'}>3D</a>{/if}
+        <button class="btn small" style="background: transparent; color: #fff; border-color: #4e6570" onclick={openSize}>Размери</button>
+      </div>
+    {/if}
   </div>
   {#if room}
     <div>
