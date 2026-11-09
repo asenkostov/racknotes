@@ -129,6 +129,7 @@ export async function deleteRoom(id: string) {
     await removeAll('photos', await db.photos.where('[ownerKind+ownerId]').equals(['room', id]).toArray());
     const r = await db.rooms.get(id);
     if (!r) return;
+    for (const it of r.items ?? []) await removeAll('photos', await db.photos.where('[ownerKind+ownerId]').equals(['item', it.id]).toArray());
     await removeAll('rooms', [r]);
     if (!(await db.rooms.where('floorId').equals(r.floorId).count())) {
       const f = await db.floors.get(r.floorId);

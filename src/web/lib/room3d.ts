@@ -3,7 +3,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Device, Door, Facing, Rack, Room } from '../../core/model.ts';
-import { DEFAULT_RACK_MM, MIN_FRONT_M, MIN_REAR_M, footprint, rackSwings, swingPoints } from '../../core/plan.ts';
+import { DEFAULT_RACK_MM, ITEM_DEFS, MIN_FRONT_M, MIN_REAR_M, footprint, itemBox, itemName, rackSwings, swingPoints } from '../../core/plan.ts';
+import type { RoomItem } from '../../core/model.ts';
 import { elevation } from '../../core/rack.ts';
 import { roleColors } from '../../core/roles.ts';
 
@@ -291,9 +292,65 @@ export function createRoomScene(canvas: HTMLCanvasElement, onPick: (rackId: stri
         mesh.add(new THREE.Line(split, new THREE.LineBasicMaterial({ color: 0x0b1316 })));
       }
     }
+    for (const it of room.items ?? []) addItem(it, at);
     highlight();
     if (!camera.userData.placed) view('iso');
     else render();
+  }
+
+  /** Vertical extent (from, height) of an item, metres above the floor. */
+  function itemHeight(it: RoomItem): [number, number] {
+    switch (it.kind) {
+      case 'panel': return [0.4, 1.4];
+      case 'ups': return [0, 1.8];
+      case 'ac': return it.sub === 'floor' ? [0, 1.9] : it.sub === 'inrow' ? [0, 2.0] : [2.0, 0.32];
+      case 'column': return [0, WALL_H];
+      case 'camera': return [2.4, 0];
+      case 'detector': return [WALL_H - 0.05, 0];
+      case 'reader': return [1.2, 0];
+      case 'fire': return it.sub === 'system' ? [0, 0] : [0.35, 0];
+      default: return [1.3, 0];
+    }
+  }
+
+  function addItem(it: RoomItem, at: (x: number, y: number) => THREE.Vector3) {
+    const def = ITEM_DEFS[it.kind];
+    const color = new THREE.Color(def.color);
+    const [y0, h] = itemHeight(it);
+    const b = itemBox(it);
+    if (b) {
+      const c = at(b.x + b.w / 2, b.y + b.h / 2);
+      const mesh = new THREE.Mesh(
+        new THREE.BoxGeometry(b.w, h, b.h),
+        new THREE.MeshStandardMaterial({ color: it.kind === 'column' ? 0xa8a29e : color, roughness: 0.8, transparent: it.kind !== 'column', opacity: 0.85 })
+      );
+      mesh.position.set(c.x, y0 + h / 2, c.z);
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x13232b })));
+      content.add(mesh);
+      if (def.sym) {
+        const tag = label(def.sym);
+        tag.position.set(c.x, y0 + h + 0.18, c.z);
+        tag.scale.multiplyScalar(0.7);
+        content.add(tag);
+      }
+      return;
+    }
+    // Points: a marker at its height, with a thin stem to the floor so its spot reads in 3D.
+    const p = at(it.x, it.y);
+    const y = it.kind === 'fire' && it.sub === 'system' ? 0.5 : y0;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+    ball.position.set(p.x, y, p.z);
+    content.add(ball);
+    const stem = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(p.x, 0.005, p.z), new THREE.Vector3(p.x, y, p.z)]);
+    content.add(new THREE.Line(stem, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5 })));
+    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.08, 16), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5 }));
+    dot.rotation.x = -Math.PI / 2;
+    dot.position.set(p.x, 0.007, p.z);
+    content.add(dot);
+    const tag = label(it.kind === 'note' && it.name ? it.name.slice(0, 24) : def.sym || itemName(it));
+    tag.position.set(p.x, y + 0.22, p.z);
+    tag.scale.multiplyScalar(0.6);
+    content.add(tag);
   }
 
   function highlight() {
