@@ -1,6 +1,6 @@
 {
   "name": "racknotes",
-  "version": "0.9.3",
+  "version": "0.10.1",
   "private": true,
   "description": "Offline field survey of client racks and equipment, exported to NetBox",
   "license": "GPL-3.0-or-later",

@@ -2,6 +2,7 @@
   import type { Floor, Rack } from '../../core/model.ts';
   import { meta } from '../../core/model.ts';
   import { usedUnits } from '../../core/rack.ts';
+  import { footprint } from '../../core/plan.ts';
   import { db, deleteRoom, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
@@ -115,10 +116,28 @@
     <div class="section-title">Снимки на помещението</div>
     <div class="card"><Photos surveyId={room.surveyId} ownerKind="room" ownerId={room.id} /></div>
 
-    <div class="card">
-      <h3 style="font-size: 15px">План и 3D изглед</h3>
-      <p class="muted" style="margin: 0">Предстои: план на етажа от PDF/DWG с очертано помещение и шкафовете в него, и 3D изглед на помещението.</p>
-    </div>
+    <div class="section-title">План на помещението</div>
+    <a class="card plan-card" href={'#/room/' + room.id + '/plan'}>
+      {#if room.widthM && room.depthM}
+        {@const W = room.widthM * 100}
+        {@const D = room.depthM * 100}
+        <svg viewBox={`-10 -10 ${W + 20} ${D + 20}`} style="width: 100%; max-height: 220px" aria-hidden="true">
+          <rect x="0" y="0" width={W} height={D} fill="#F4F6F5" stroke="#13232B" stroke-width={Math.max(W, D) / 120} />
+          {#each data.value?.racks ?? [] as r}
+            {@const b = footprint(r)}
+            {#if b}<rect x={b.x * 100} y={b.y * 100} width={b.w * 100} height={b.h * 100} fill="#2B3A40" stroke="#F4F6F5" stroke-width={Math.max(W, D) / 200} />{/if}
+          {/each}
+        </svg>
+        <div style="display: flex; justify-content: space-between; align-items: center">
+          <span class="muted mono">{room.widthM.toFixed(2).replace('.', ',')} × {room.depthM.toFixed(2).replace('.', ',')} m · {(data.value?.racks ?? []).filter(r => r.plan).length} от {data.value?.racks.length ?? 0} шкафа</span>
+          <b>Отвори плана →</b>
+        </div>
+      {:else}
+        <span class="muted">Още няма план. Задай размерите на помещението и разположи шкафовете.</span>
+        <b>Задай размери →</b>
+      {/if}
+    </a>
+    <p class="muted" style="margin: 0; font-size: 13px">Предстои: 3D изглед на помещението и план на етажа от PDF/DWG.</p>
   </main>
 
   <Sheet bind:open={editOpen} title="Помещение">
@@ -144,3 +163,7 @@
     </form>
   </Sheet>
 {/if}
+
+<style>
+  .plan-card { color: inherit; text-decoration: none; }
+</style>

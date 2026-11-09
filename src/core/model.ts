@@ -34,10 +34,24 @@ export interface Floor extends Meta {
   name: string;
 }
 
+export type Wall = 'top' | 'right' | 'bottom' | 'left';
+export type Facing = 'up' | 'right' | 'down' | 'left';
+
+export interface Door {
+  wall: Wall;
+  /** Metres from the wall's start (left end for top/bottom, top end for left/right). */
+  offset: number;
+  width: number;
+}
+
 export interface Room extends Meta {
   surveyId: Id;
   floorId: Id;
   name: string;
+  /** Plan of the room: inner size in metres (x = left→right, y = top→bottom) and doors. */
+  widthM?: number;
+  depthM?: number;
+  doors?: Door[];
 }
 
 /** NetBox: Rack. */
@@ -47,6 +61,11 @@ export interface Rack extends Meta {
   name: string;
   uHeight: number;
   notes: string;
+  /** Outer size in millimetres (default 600 × 1000). */
+  widthMm?: number;
+  depthMm?: number;
+  /** Position on the room plan: top-left corner in metres, and the direction the front faces. */
+  plan?: { x: number; y: number; facing: Facing };
 }
 
 /** NetBox: Device. position 0 = not racked / 0U (vertical PDU etc.). */

@@ -10,15 +10,18 @@
   import Settings from './views/Settings.svelte';
   import Import from './views/Import.svelte';
   import RoomView from './views/Room.svelte';
+  import RoomPlan from './views/RoomPlan.svelte';
 
   loadIdentity();
   startSync();
   startPwa();
 </script>
 
-<div class="app" class:wide={router.route.name === 'rack'}>
+<div class="app" class:wide={router.route.name === 'rack' || router.route.name === 'plan'}>
   {#if router.route.name === 'survey'}
     {#key router.route.id}<SurveyView id={router.route.id} />{/key}
+  {:else if router.route.name === 'plan'}
+    {#key router.route.id}<RoomPlan id={router.route.id} />{/key}
   {:else if router.route.name === 'room'}
     {#key router.route.id}<RoomView id={router.route.id} />{/key}
   {:else if router.route.name === 'rack'}
