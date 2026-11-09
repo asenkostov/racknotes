@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkPlan, clampInto, clearance, firstFreeSpot, footprint } from '../src/core/plan.ts';
+import { checkPlan, clampInto, clearance, firstFreeSpot, footprint, rackSwings } from '../src/core/plan.ts';
 import type { Rack, Room } from '../src/core/model.ts';
 
 const room: Room = { id: 'room', surveyId: 's', floorId: 'f', name: 'R', createdAt: '', updatedAt: '', widthM: 6, depthM: 4.5 };
@@ -55,5 +55,28 @@ describe('placement helpers', () => {
     expect(clampInto({ x: 5.9, y: -1, w: 0.6, h: 1.2 }, { widthM: 6, depthM: 4.5 })).toEqual({ x: 5.4, y: 0 });
     const taken = [footprint(rack('a', 0.2, 0.2, 'down'))!];
     expect(firstFreeSpot({ widthM: 6, depthM: 4.5 }, { widthMm: 600, depthMm: 1200 }, taken)).toEqual({ x: 0.8, y: 0.6, facing: 'down' });
+  });
+});
+
+describe('rack doors', () => {
+  it('puts hinges on the correct side for each facing', () => {
+    // Facing down: standing below the rack looking up, left hinge is at smaller x.
+    const down = rackSwings(rack('a', 1, 1, 'down', { doors: { front: 'left' } }));
+    expect(down).toHaveLength(1);
+    expect(down[0]).toMatchObject({ side: 'front', hinge: { x: 1, y: 2.2 }, along: { x: 1, y: 0 }, out: { x: 0, y: 1 }, r: 0.6 });
+    // Facing right: front edge at x = 1 + 1.2; left hinge is the lower one (larger y).
+    const right = rackSwings(rack('b', 1, 1, 'right', { doors: { front: 'left' } }));
+    expect(right[0].hinge).toEqual({ x: 2.2, y: 1.6 });
+    // Rear double door: two leaves of half width.
+    const rear = rackSwings(rack('c', 1, 1, 'down', { doors: { rear: 'double' } }));
+    expect(rear.map(s => s.r)).toEqual([0.3, 0.3]);
+    expect(rear.every(s => s.out.y === -1 && s.hinge.y === 1)).toBe(true);
+  });
+
+  it('warns when a door cannot open fully', () => {
+    const r = rack('a', 1, 0.4, 'down', { doors: { front: 'right', rear: 'left' } });
+    const texts = checkPlan(room, [r]).map(i => i.text);
+    expect(texts.some(t => t.includes('вратата отзад не може'))).toBe(true);
+    expect(texts.some(t => t.includes('вратата отпред'))).toBe(false);
   });
 });

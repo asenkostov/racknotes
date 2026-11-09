@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Door, Facing, Rack, Wall } from '../../core/model.ts';
+  import type { Door, Facing, Rack, RackDoor, Wall } from '../../core/model.ts';
   import { meta } from '../../core/model.ts';
-  import { DEFAULT_RACK_MM, checkPlan, clampInto, firstFreeSpot, footprint, round, tidy, type Box } from '../../core/plan.ts';
+  import { DEFAULT_RACK_MM, checkPlan, clampInto, doorLabel, firstFreeSpot, footprint, rackSwings, round, swingPoints, tidy, type Box } from '../../core/plan.ts';
   import { usedUnits } from '../../core/rack.ts';
   import { db, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
@@ -108,6 +108,16 @@
       await saveRack(r, { [field]: Math.round(v) });
     }
   }
+  async function setDoor(side: 'front' | 'rear', value: string) {
+    const r = data.value?.racks.find(x => x.id === selId);
+    if (!r) return;
+    const doors = { ...(r.doors ?? {}) };
+    if (value) doors[side] = value as RackDoor;
+    else delete doors[side];
+    await saveRack(r, { doors });
+  }
+  const fan = (pts: { x: number; y: number }[]) => 'M' + pts.map(p => `${(p.x * 100).toFixed(1)} ${(p.y * 100).toFixed(1)}`).join(' L') + ' Z';
+
   async function place(r: Rack) {
     const spot = firstFreeSpot(dims, r, placed.map(p => p.b));
     await saveRack(r, { plan: spot });
@@ -255,6 +265,13 @@
               <path d={g.arc} fill="none" stroke="#8A979C" stroke-width={f / 10} stroke-dasharray={`${f / 3} ${f / 4}`} />
             {/each}
 
+            {#each placed as { r } (r.id)}
+              {#each rackSwings(r) as sw}
+                {@const pts = swingPoints(sw)}
+                <path d={fan(pts)} fill="rgba(124,58,237,0.10)" stroke="#7C3AED" stroke-width={f / 12} stroke-dasharray={`${f / 3} ${f / 4}`} />
+                <line x1={pts[0].x * 100} y1={pts[0].y * 100} x2={pts.at(-1)!.x * 100} y2={pts.at(-1)!.y * 100} stroke="#7C3AED" stroke-width={f / 6} />
+              {/each}
+            {/each}
             {#each placed as { r, b } (r.id)}
               {@const e = frontEdge(b, r.plan!.facing)}
               {@const on = r.id === selId}
@@ -276,6 +293,7 @@
           <div class="legend" style="margin-top: 6px">
             <span><i style="background: #3B82F6"></i>Лице на шкафа</span>
             <span><i style="border: 1px dashed #8A979C"></i>Врата</span>
+            <span><i style="background: rgba(124,58,237,.25); border: 1px dashed #7C3AED"></i>Врата на шкаф</span>
             <span><i style="border: 2px solid #C2410C"></i>Има забележка</span>
           </div>
           <p class="muted hint-mouse" style="margin: 0">Влачи шкаф с мишката; позициите се прилепват през 10 cm.</p>
@@ -305,6 +323,18 @@
                   {/each}
                 </div>
               </div>
+              <div class="grid2">
+                {#each [['front', 'Врата отпред'], ['rear', 'Врата отзад']] as [side, l]}
+                  <div class="field">
+                    <label for={'door-' + side}>{l}</label>
+                    <select id={'door-' + side} value={sel.doors?.[side as 'front' | 'rear'] ?? ''} onchange={e => setDoor(side as 'front' | 'rear', (e.target as HTMLSelectElement).value)}>
+                      <option value="">не е отбелязано</option>
+                      {#each Object.entries(doorLabel) as [k, v]}<option value={k}>{v}</option>{/each}
+                    </select>
+                  </div>
+                {/each}
+              </div>
+              <p class="muted" style="margin: -4px 0 0; font-size: 13px">Пантите се гледат застанал срещу съответната страна на шкафа.</p>
               <div class="field">
                 <span style="font-size: 13px; font-weight: 600; color: var(--muted)">Премести с 10 cm</span>
                 <div class="nudge">

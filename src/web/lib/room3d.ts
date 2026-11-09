@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { Device, Door, Facing, Rack, Room } from '../../core/model.ts';
-import { DEFAULT_RACK_MM, MIN_FRONT_M, MIN_REAR_M, footprint } from '../../core/plan.ts';
+import { DEFAULT_RACK_MM, MIN_FRONT_M, MIN_REAR_M, footprint, rackSwings, swingPoints } from '../../core/plan.ts';
 import { elevation } from '../../core/rack.ts';
 import { roleColors } from '../../core/roles.ts';
 
@@ -272,6 +272,24 @@ export function createRoomScene(canvas: HTMLCanvasElement, onPick: (rackId: stri
       };
       zone(MIN_FRONT_M, 0x3b82f6, 1);
       zone(MIN_REAR_M, 0x8a979c, -1);
+
+      // Rack door swings on the floor, plus a door-split line on double doors.
+      for (const sw of rackSwings(r)) {
+        const pts = swingPoints(sw).map(p => at(p.x, p.y));
+        const tri: number[] = [];
+        for (let i = 1; i < pts.length - 1; i++) tri.push(pts[0].x, 0.008, pts[0].z, pts[i].x, 0.008, pts[i].z, pts[i + 1].x, 0.008, pts[i + 1].z);
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(tri, 3));
+        content.add(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x7c3aed, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })));
+        const leaf = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(pts[0].x, 0.01, pts[0].z), new THREE.Vector3(pts.at(-1)!.x, 0.01, pts.at(-1)!.z)]);
+        content.add(new THREE.Line(leaf, new THREE.LineBasicMaterial({ color: 0x7c3aed })));
+      }
+      for (const side of ['front', 'rear'] as const) {
+        if (r.doors?.[side] !== 'double') continue;
+        const z = (side === 'front' ? 1 : -1) * (dp / 2 + 0.002);
+        const split = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -h / 2, z), new THREE.Vector3(0, h / 2, z)]);
+        mesh.add(new THREE.Line(split, new THREE.LineBasicMaterial({ color: 0x0b1316 })));
+      }
     }
     highlight();
     if (!camera.userData.placed) view('iso');

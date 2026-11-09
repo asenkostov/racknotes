@@ -105,6 +105,7 @@
       <span><i style="background: rgba(59,130,246,.35)"></i>Отпред {'≥'} 1,0 m</span>
       <span><i style="background: rgba(138,151,156,.4)"></i>Отзад {'≥'} 0,6 m</span>
       <span><i style="background: rgba(240,138,75,.4)"></i>Отваряне на вратата</span>
+      <span><i style="background: rgba(124,58,237,.3)"></i>Врати на шкафа</span>
       <span><i style="border: 2px solid #C2410C"></i>Има забележка в плана</span>
     </div>
 
