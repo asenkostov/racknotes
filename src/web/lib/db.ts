@@ -133,7 +133,10 @@ export async function deleteRoom(id: string) {
     await removeAll('rooms', [r]);
     if (!(await db.rooms.where('floorId').equals(r.floorId).count())) {
       const f = await db.floors.get(r.floorId);
-      if (f) await removeAll('floors', [f]);
+      if (f) {
+        await removeAll('photos', await db.photos.where('[ownerKind+ownerId]').equals(['floor', f.id]).toArray());
+        await removeAll('floors', [f]);
+      }
     }
   });
   notify();

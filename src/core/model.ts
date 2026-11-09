@@ -32,7 +32,23 @@ export interface Floor extends Meta {
   surveyId: Id;
   level: number;
   name: string;
+  /** Floor plan: a drawing (stored as a photo with ownerKind 'floor') and its scale. */
+  plan?: FloorPlan;
 }
+
+export interface FloorPlan {
+  /** Photo record holding the drawing, rendered to JPEG. */
+  photoId?: string;
+  /** Drawing size in pixels. */
+  imgW?: number;
+  imgH?: number;
+  /** Metres per drawing pixel, from the two-point calibration. */
+  mPerPx?: number;
+  /** Original file name, for reference. */
+  source?: string;
+}
+
+export type Rot = 0 | 90 | 180 | 270;
 
 export type Wall = 'top' | 'right' | 'bottom' | 'left';
 export type Facing = 'up' | 'right' | 'down' | 'left';
@@ -56,6 +72,8 @@ export interface Room extends Meta {
   doors?: Door[];
   /** Other things in the room: panels, UPS, AC, columns, safety devices, notes. */
   items?: RoomItem[];
+  /** Where the room sits on the floor plan: its top-left plan corner in floor metres, turned clockwise. */
+  floor?: { x: number; y: number; rot: Rot };
 }
 
 export type ItemKind = 'panel' | 'ups' | 'ac' | 'column' | 'fire' | 'detector' | 'camera' | 'reader' | 'note';
@@ -141,7 +159,7 @@ export interface Cable extends Meta {
   notes: string;
 }
 
-export type OwnerKind = 'survey' | 'room' | 'rack' | 'device' | 'item';
+export type OwnerKind = 'survey' | 'floor' | 'room' | 'rack' | 'device' | 'item';
 
 export interface Photo extends Meta {
   surveyId: Id;
