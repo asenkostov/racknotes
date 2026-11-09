@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Door, Facing, Rack, Wall } from '../../core/model.ts';
+  import { meta } from '../../core/model.ts';
   import { DEFAULT_RACK_MM, checkPlan, clampInto, firstFreeSpot, footprint, round, tidy, type Box } from '../../core/plan.ts';
   import { usedUnits } from '../../core/rack.ts';
   import { db, save } from '../lib/db.ts';
@@ -118,6 +119,28 @@
     const { plan: _drop, ...rest } = $state.snapshot(r);
     await save('racks', rest);
     selId = '';
+  }
+
+  // --- new rack, created straight onto the plan ---
+  let rackOpen = $state(false);
+  let rackForm = $state({ name: '', uHeight: 42, widthMm: DEFAULT_RACK_MM.width, depthMm: DEFAULT_RACK_MM.depth });
+  function openRack() {
+    rackForm = { name: `R${String(racks.length + 1).padStart(2, '0')}`, uHeight: 42, widthMm: DEFAULT_RACK_MM.width, depthMm: DEFAULT_RACK_MM.depth };
+    rackOpen = true;
+  }
+  async function addRack(e: SubmitEvent) {
+    e.preventDefault();
+    if (!room || !rackForm.name.trim()) return;
+    const uHeight = Math.trunc(Number(rackForm.uHeight));
+    const widthMm = Math.round(Number(rackForm.widthMm));
+    const depthMm = Math.round(Number(rackForm.depthMm));
+    if (!(uHeight >= 1 && uHeight <= 60)) return toast('Височината трябва да е между 1 и 60 U.');
+    if (!(widthMm >= 300 && widthMm <= 2000 && depthMm >= 300 && depthMm <= 2000)) return toast('Размерът трябва да е между 300 и 2000 mm.');
+    const plan = firstFreeSpot(dims, { widthMm, depthMm }, placed.map(p => p.b));
+    const rack: Rack = { ...meta(), surveyId: room.surveyId, roomId: room.id, name: rackForm.name.trim(), uHeight, notes: '', widthMm, depthMm, plan };
+    await save('racks', rack);
+    rackOpen = false;
+    selId = rack.id;
   }
 
   // --- room size and doors ---
@@ -251,6 +274,7 @@
             <span><i style="border: 2px solid #C2410C"></i>Има забележка</span>
           </div>
           <p class="muted hint-mouse" style="margin: 0">Влачи шкаф с мишката; позициите се прилепват през 10 cm.</p>
+          <p class="muted hint-touch" style="margin: 0">Докосни шкаф, за да го избереш, после го мести със стрелките отдолу.</p>
         </div>
 
         <aside class="plan-side">
@@ -291,6 +315,10 @@
             <div class="card"><p class="muted" style="margin: 0">Избери шкаф от плана, за да го местиш, завъртиш или да смениш размера му.</p></div>
           {/if}
 
+          <button class="btn primary block" onclick={openRack}><Icon name="plus" size={18} /> Нов шкаф на плана</button>
+          {#if !racks.length}
+            <div class="card"><p class="muted" style="margin: 0">В помещението още няма шкафове. Добави шкаф и после го премести с бутоните или с числа.</p></div>
+          {/if}
           {#if unplaced.length}
             <div class="section-title">Не са на плана</div>
             <div class="list">
@@ -335,6 +363,19 @@
     </form>
   </Sheet>
 
+  <Sheet bind:open={rackOpen} title="Нов шкаф">
+    <form class="stack" onsubmit={addRack}>
+      <div class="grid2">
+        <div class="field"><label for="nr">Име</label><input id="nr" class="mono" bind:value={rackForm.name} required /></div>
+        <div class="field"><label for="nu">Височина (U)</label><input id="nu" type="number" min="1" max="60" bind:value={rackForm.uHeight} /></div>
+        <div class="field"><label for="nw">Ширина (mm)</label><input id="nw" type="number" inputmode="numeric" bind:value={rackForm.widthMm} /></div>
+        <div class="field"><label for="nd">Дълбочина (mm)</label><input id="nd" type="number" inputmode="numeric" bind:value={rackForm.depthMm} /></div>
+      </div>
+      <p class="muted" style="margin: 0">Шкафът се слага на първото свободно място с 0,60 m отзад. След това го местиш и завърташ.</p>
+      <button class="btn primary block" type="submit">Сложи на плана</button>
+    </form>
+  </Sheet>
+
   <Sheet bind:open={doorOpen} title="Нова врата">
     <form class="stack" onsubmit={addDoor}>
       <div class="field">
@@ -362,5 +403,6 @@
   .seg4 .btn { padding: 0 4px; font-size: 13px; }
   .nudge { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
   .nudge .btn { height: 44px; font-size: 18px; }
-  @media (hover: none) { .hint-mouse { display: none; } }
+  .hint-touch { display: none; }
+  @media (hover: none) { .hint-mouse { display: none; } .hint-touch { display: block; } }
 </style>
