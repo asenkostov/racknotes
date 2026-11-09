@@ -8,6 +8,7 @@ export type Route =
   | { name: 'room'; id: string }
   | { name: 'plan'; id: string }
   | { name: 'room3d'; id: string }
+  | { name: 'floor'; id: string }
   | { name: 'device'; id: string; params: URLSearchParams };
 
 function parse(hash: string): Route {
@@ -16,6 +17,7 @@ function parse(hash: string): Route {
   const params = new URLSearchParams(qs);
   if (parts[0] === 's' && parts[1]) return { name: 'survey', id: parts[1] };
   if (parts[0] === 'r' && parts[1]) return { name: 'rack', id: parts[1] };
+  if (parts[0] === 'floor' && parts[1]) return { name: 'floor', id: parts[1] };
   if (parts[0] === 'room' && parts[1] && parts[2] === '3d') return { name: 'room3d', id: parts[1] };
   if (parts[0] === 'room' && parts[1] && parts[2] === 'plan') return { name: 'plan', id: parts[1] };
   if (parts[0] === 'room' && parts[1]) return { name: 'room', id: parts[1] };

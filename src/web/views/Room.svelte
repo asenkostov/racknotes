@@ -145,7 +145,7 @@
     {#if room.widthM && room.depthM}
       <a class="btn block" href={'#/room/' + room.id + '/3d'}>3D изглед на помещението</a>
     {/if}
-    <p class="muted" style="margin: 0; font-size: 13px">Предстои: план на етажа от PDF/DWG.</p>
+    <a class="btn block" href={'#/floor/' + room.floorId}>{room.floor ? 'Виж на плана на етажа' : 'Сложи на плана на етажа'}</a>
   </main>
 
   <Sheet bind:open={editOpen} title="Помещение">

@@ -171,7 +171,7 @@
     {#each data.value.floors as floor (floor.id)}
       {@const rooms = data.value.rooms.filter(r => r.floorId === floor.id)}
       {#if rooms.length}
-        <div class="section-title">{floor.name} · помещения</div>
+        <div class="section-title">{floor.name} · помещения <a class="btn small" href={'#/floor/' + floor.id} style="text-decoration: none">План на етажа</a></div>
         <div class="list">
           {#each rooms as room (room.id)}
             <a href={'#/room/' + room.id}>

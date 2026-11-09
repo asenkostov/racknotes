@@ -38,7 +38,14 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // pdf.js is only needed to import a floor drawing; fetched on first use instead of at install.
+        globIgnores: ['**/pdf*.js', '**/pdf*.mjs'],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/assets/pdf'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'pdfjs', expiration: { maxEntries: 10 } }
+          },
           {
             // Elevation images from the device type library, kept for offline use.
             urlPattern: ({ url }) => url.origin === 'https://raw.githubusercontent.com' && url.pathname.startsWith('/netbox-community/devicetype-library/'),
