@@ -36,6 +36,8 @@ export interface Floor extends Meta {
 
 export type Wall = 'top' | 'right' | 'bottom' | 'left';
 export type Facing = 'up' | 'right' | 'down' | 'left';
+/** Rack door on one face. left/right = hinge side as seen standing in front of that face. */
+export type RackDoor = 'none' | 'left' | 'right' | 'double';
 
 export interface Door {
   wall: Wall;
@@ -66,6 +68,8 @@ export interface Rack extends Meta {
   depthMm?: number;
   /** Position on the room plan: top-left corner in metres, and the direction the front faces. */
   plan?: { x: number; y: number; facing: Facing };
+  /** Unset = not recorded yet. */
+  doors?: { front?: RackDoor; rear?: RackDoor };
 }
 
 /** NetBox: Device. position 0 = not racked / 0U (vertical PDU etc.). */

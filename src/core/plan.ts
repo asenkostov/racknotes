@@ -1,7 +1,7 @@
 // Room plan geometry: rack footprints, placement, service clearance checks.
 // Units: metres. Origin: top-left inner corner of the room; x → right, y → down.
 
-import type { Door, Facing, Rack, Room } from './model.ts';
+import type { Door, Facing, Rack, RackDoor, Room } from './model.ts';
 
 export const DEFAULT_RACK_MM = { width: 600, depth: 1000 };
 export const MIN_FRONT_M = 1.0;
@@ -96,6 +96,60 @@ export function doorBox(door: Door, room: { widthM: number; depthM: number }): B
   }
 }
 
+type Vec = { x: number; y: number };
+/** One door leaf swinging out of a rack face: quarter circle from the hinge. */
+export interface Swing {
+  side: 'front' | 'rear';
+  hinge: Vec;
+  /** Unit vector along the face, from the hinge towards the closing edge. */
+  along: Vec;
+  /** Unit vector out of the face. */
+  out: Vec;
+  r: number;
+}
+
+const NORMAL: Record<Facing, Vec> = { down: { x: 0, y: 1 }, up: { x: 0, y: -1 }, right: { x: 1, y: 0 }, left: { x: -1, y: 0 } };
+/** "Right hand" along the front face for someone standing in front of it. */
+const RIGHT: Record<Facing, Vec> = { down: { x: 1, y: 0 }, up: { x: -1, y: 0 }, right: { x: 0, y: -1 }, left: { x: 0, y: 1 } };
+
+export const doorLabel: Record<RackDoor, string> = { none: 'няма', left: 'една, панти отляво', right: 'една, панти отдясно', double: 'двукрила' };
+
+/** Door leaves of a placed rack, in plan coordinates. */
+export function rackSwings(rack: Pick<Rack, 'widthMm' | 'depthMm' | 'plan' | 'doors'>): Swing[] {
+  const b = footprint(rack);
+  if (!b || !rack.plan) return [];
+  const w = (rack.widthMm ?? DEFAULT_RACK_MM.width) / 1000;
+  const d = (rack.depthMm ?? DEFAULT_RACK_MM.depth) / 1000;
+  const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  const n = NORMAL[rack.plan.facing];
+  const u = RIGHT[rack.plan.facing];
+  const out: Swing[] = [];
+  for (const side of ['front', 'rear'] as const) {
+    const kind = rack.doors?.[side];
+    if (!kind || kind === 'none') continue;
+    const o = side === 'front' ? n : { x: -n.x, y: -n.y };
+    // Seen from behind, the viewer's right hand points the other way.
+    const right = side === 'front' ? u : { x: -u.x, y: -u.y };
+    const face = { x: c.x + (o.x * d) / 2, y: c.y + (o.y * d) / 2 };
+    const edge = (s: number) => ({ x: face.x + (s * right.x * w) / 2, y: face.y + (s * right.y * w) / 2 });
+    const leaf = (hingeSide: -1 | 1, r: number): Swing => ({ side, hinge: edge(hingeSide), along: { x: -hingeSide * right.x, y: -hingeSide * right.y }, out: o, r });
+    if (kind === 'left') out.push(leaf(-1, w));
+    else if (kind === 'right') out.push(leaf(1, w));
+    else out.push(leaf(-1, w / 2), leaf(1, w / 2));
+  }
+  return out;
+}
+
+/** Points of a door swing (hinge first), for drawing as a filled fan. */
+export function swingPoints(s: Swing, steps = 12): Vec[] {
+  const pts: Vec[] = [s.hinge];
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * (Math.PI / 2);
+    pts.push({ x: s.hinge.x + s.r * (Math.cos(t) * s.along.x + Math.sin(t) * s.out.x), y: s.hinge.y + s.r * (Math.cos(t) * s.along.y + Math.sin(t) * s.out.y) });
+  }
+  return pts;
+}
+
 /** Checks a field engineer cares about: inside the room, no overlaps, service space, door not blocked. */
 export function checkPlan(room: Room, racks: Rack[]): PlanIssue[] {
   if (!room.widthM || !room.depthM) return [];
@@ -119,6 +173,12 @@ export function checkPlan(room: Room, racks: Rack[]): PlanIssue[] {
         ? { level: 'warn', rackId: r.id, text: `${r.name}: отзад има само ${fmt(rear)} (препоръчително поне ${fmt(MIN_REAR_M)}).` }
         : { level: 'ok', rackId: r.id, text: `${r.name}: отзад ${fmt(rear)} свободно.` }
     );
+    for (const side of ['front', 'rear'] as const) {
+      const leaf = rackSwings(r).find(s => s.side === side)?.r;
+      const free = side === 'front' ? front : rear;
+      if (leaf && free + 1e-9 < leaf)
+        out.push({ level: 'warn', rackId: r.id, text: `${r.name}: вратата ${side === 'front' ? 'отпред' : 'отзад'} не може да се отвори докрай (нужни ${fmt(leaf)}, има ${fmt(free)}).` });
+    }
     for (const d of room.doors ?? []) if (overlaps(b, doorBox(d, dims))) out.push({ level: 'warn', rackId: r.id, text: `${r.name} пречи на отварянето на вратата.` });
   }
   return out;
