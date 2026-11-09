@@ -6,6 +6,7 @@
 // creating duplicates, and timestamps come from NetBox, so two identical
 // imports compare equal during sync.
 
+import { baseline } from './verify.ts';
 import type { Cable, CableEnd, Device, Floor, PortKind, Rack, Room, Survey } from './model.ts';
 import { placementError } from './rack.ts';
 
@@ -150,7 +151,7 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
       position = Math.floor(position);
     }
     if (height === 0) position = 0; // 0U devices (vertical PDUs) are never placed in a U
-    devices.push({
+    const device: Device = {
       id: `nb-device-${d.id}`,
       createdAt: d.created ?? survey.createdAt,
       updatedAt: opts.now,
@@ -173,7 +174,8 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
       notes: d.description ?? '',
       ...(d.parent_device ? { parentId: `nb-device-${d.parent_device.id}` } : {}),
       ...(roleColor.get(d.role?.id) ? { roleColor: roleColor.get(d.role?.id) } : {})
-    });
+    };
+    devices.push({ ...device, nb: baseline(device) });
   }
 
   // Overlaps that NetBox allowed (or that the export reveals) are reported, not fixed.

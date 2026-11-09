@@ -10,6 +10,7 @@
   import Photos from '../lib/Photos.svelte';
   import RackElevation from '../lib/RackElevation.svelte';
   import { roleColors } from '../../core/roles.ts';
+  import { STATE_LABELS, STATE_SYMBOLS, nextPending, summary, verifyState } from '../../core/verify.ts';
 
   let { id }: { id: string } = $props();
 
@@ -18,12 +19,13 @@
     async rid => {
       const rack = await db.racks.get(rid);
       if (!rack) return null;
-      const [room, devices, rooms] = await Promise.all([
+      const [room, devices, rooms, survey] = await Promise.all([
         db.rooms.get(rack.roomId),
         db.devices.where('rackId').equals(rid).toArray(),
-        db.rooms.where('surveyId').equals(rack.surveyId).sortBy('name')
+        db.rooms.where('surveyId').equals(rack.surveyId).sortBy('name'),
+        db.surveys.get(rack.surveyId)
       ]);
-      return { rack, room, devices, rooms };
+      return { rack, room, devices, rooms, survey };
     }
   );
 
@@ -41,6 +43,9 @@
   }
   const rack = $derived(data.value?.rack);
   const devices = $derived(data.value?.devices ?? []);
+  const verifying = $derived(!!data.value?.survey?.verify);
+  const vsum = $derived(summary(devices));
+  const next = $derived(verifying ? nextPending(devices) : undefined);
   const withImages = $derived(devices.filter(d => d.catalog?.front || d.catalog?.rear).length);
   const unracked = $derived(devices.filter(d => d.position === 0 && !d.parentId));
   const childCount = $derived(devices.reduce((m, d) => (d.parentId ? m.set(d.parentId, (m.get(d.parentId) ?? 0) + 1) : m), new Map<string, number>()));
@@ -113,12 +118,24 @@
       {/if}
     </div>
 
+    {#if verifying && vsum.total + vsum.new}
+      <div class="card vbar">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap">
+          <b>Проверка: {vsum.done} от {vsum.total}</b>
+          {#if next}<a class="btn small dark" href={'#/d/' + next.id} style="text-decoration: none">Следващо: {next.name || next.model} →</a>
+          {:else if vsum.total}<span style="color: var(--ok); font-weight: 600">✓ Шкафът е проверен</span>{/if}
+        </div>
+        <div class="bar"><div style="width: {vsum.total ? Math.round((vsum.done / vsum.total) * 100) : 100}%"></div></div>
+        <span class="muted" style="font-size: 13px">✓ {vsum.ok} съвпадат · ✎ {vsum.changed} различни · ✗ {vsum.missing} липсват · + {vsum.new} нови</span>
+      </div>
+    {/if}
+
     <div style="display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start">
       {#if wide}
-        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} {images} label="Лице" />
-        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} {images} label="Гръб" />
+        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} {images} {verifying} label="Лице" />
+        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} {images} {verifying} label="Гръб" />
       {:else}
-        <RackElevation {rack} {devices} {face} uPx={20} {childCount} {images} />
+        <RackElevation {rack} {devices} {face} uPx={20} {childCount} {images} {verifying} />
       {/if}
     </div>
 
@@ -131,7 +148,12 @@
         {#each unracked as d (d.id)}
           <a href={'#/d/' + d.id}>
             <span><b>{d.name || d.model || 'без име'}</b><br /><span class="muted">{d.manufacturer} {d.model}</span></span>
-            <span class="tag {d.status}">{d.status === 'check' ? 'За проверка' : 'Потвърдено'}</span>
+            {#if verifying}
+              {@const st = verifyState(d)}
+              <span class="vtag v-{st}">{STATE_SYMBOLS[st]} {STATE_LABELS[st]}</span>
+            {:else}
+              <span class="tag {d.status}">{d.status === 'check' ? 'За проверка' : 'Потвърдено'}</span>
+            {/if}
           </a>
         {/each}
       </div>
@@ -158,3 +180,7 @@
     </form>
   </Sheet>
 {/if}
+
+<style>
+  .vbar { gap: 8px; }
+</style>

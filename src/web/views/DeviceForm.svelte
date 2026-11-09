@@ -4,8 +4,9 @@
   import { meta, now } from '../../core/model.ts';
   import { norm, ref, type CatalogType } from '../../core/catalog.ts';
   import { catalog, imgUrl, loadCatalog } from '../lib/catalog.svelte.ts';
+  import { STATE_LABELS, STATE_SYMBOLS, diff, nextPending, verifyState } from '../../core/verify.ts';
   import { fittingPositions, placementError, uLabel } from '../../core/rack.ts';
-  import { db, deleteDevice, discardPhotos, save } from '../lib/db.ts';
+  import { db, deleteDevice, discardPhotos, save, saveMany } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast } from '../lib/ui.svelte.ts';
@@ -27,11 +28,12 @@
       const rackId = existing?.rackId ?? key;
       const rack = await db.racks.get(rackId);
       if (!rack) return null;
-      const [others, all] = await Promise.all([
+      const [others, all, survey] = await Promise.all([
         db.devices.where('rackId').equals(rackId).toArray(),
-        db.devices.toArray()
+        db.devices.toArray(),
+        db.surveys.get(rack.surveyId)
       ]);
-      return { existing, rack, others, all };
+      return { existing, rack, others, all, survey };
     }
   );
 
@@ -125,7 +127,23 @@
     }
   });
 
-  async function submit(status: VerifyStatus) {
+  // --- verification against NetBox ---
+  const verifying = $derived(!!ctx.value?.survey?.verify);
+  const checkable = $derived(verifying && !!form?.netboxId);
+  const liveDiff = $derived(form && checkable ? diff($state.snapshot(form) as Device) : []);
+  const vstate = $derived(form && verifying ? verifyState($state.snapshot(form) as Device) : null);
+  /** After a verification action: the next device to check in this rack, or back to the rack. */
+  function goNext(d: Device) {
+    const list = (ctx.value?.others ?? []).map(o => (o.id === d.id ? d : o));
+    const next = nextPending(list, d.id);
+    if (next) go('/d/' + next.id);
+    else {
+      toast('Всичко в шкафа е проверено.');
+      go('/r/' + d.rackId);
+    }
+  }
+
+  async function submit(status: VerifyStatus, mark?: 'ok' | 'missing' | null) {
     if (!form || !ctx.value) return;
     error = '';
     const d: Device = {
@@ -141,6 +159,8 @@
       mgmtIp: form.mgmtIp.trim(),
       status
     };
+    if (mark === null) delete d.verify;
+    else if (mark) d.verify = mark;
     if (!d.name && !d.model) return (error = 'Въведи поне име или модел.');
     if (!d.catalog && catalog.cat) {
       const t = catalog.cat.exact(d.manufacturer, d.model, d.typeSlug);
@@ -151,8 +171,18 @@
     if (err) return (error = err);
     await save('devices', d);
     saved = true;
+    if (mark !== undefined && checkable) {
+      toast(mark === 'missing' ? 'Отбелязано като липсващо.' : diff(d).length ? 'Разликите са записани.' : 'Съвпада ✓');
+      return goNext(d);
+    }
     toast(isNew ? 'Устройството е добавено.' : 'Промените са запазени.');
     go('/r/' + d.rackId);
+  }
+
+  async function confirmChildren() {
+    const kids = $state.snapshot(related.value?.children ?? []).filter(c => verifyState(c) === 'pending');
+    await saveMany([{ table: 'devices', rows: kids.map(c => ({ ...c, verify: 'ok' as const })) }]);
+    toast(`Потвърдени ${kids.length} в шасито.`);
   }
 
   async function remove() {
@@ -234,6 +264,20 @@
 {:else if form && ctx.value}
   <main>
     <form class="stack" onsubmit={e => { e.preventDefault(); submit(form!.status); }}>
+      {#if verifying && vstate}
+        <div class="verify v-{vstate}">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+            <b>{STATE_SYMBOLS[vstate]} {vstate === 'new' ? 'Ново — няма го в NetBox' : 'Проверка: ' + STATE_LABELS[vstate]}</b>
+            {#if form.verify}<button type="button" class="link" onclick={() => submit(form!.status, null)}>върни за проверка</button>{/if}
+          </div>
+          {#if checkable && !liveDiff.length && vstate !== 'missing'}
+            <span style="font-size: 14px">Сравни с това на място. Поправи каквото е различно — разликите се записват спрямо NetBox.</span>
+          {/if}
+          {#each liveDiff as x}
+            <span class="vdiff"><span class="muted">{x.label}:</span> <s>{x.field === 'rackId' ? 'друг шкаф' : x.was || '—'}</s> → <b>{x.field === 'rackId' ? ctx.value.rack.name : x.now || '—'}</b></span>
+          {/each}
+        </div>
+      {/if}
       <div class="grid2">
         <div class="field">
           <label for="mf">Производител</label>
@@ -322,9 +366,14 @@
           <span style="font-size: 13px; font-weight: 600; color: var(--muted)">В шасито ({related.value.children.length})</span>
           <div class="list">
             {#each related.value.children as ch (ch.id)}
-              <a href={'#/d/' + ch.id}><span><b>{ch.name}</b><br /><span class="muted">{ch.model}{ch.serial ? ' · ' + ch.serial : ''}</span></span><Icon name="chevron" size={16} /></a>
+              {@const cs = verifying ? verifyState(ch) : null}
+              <a href={'#/d/' + ch.id}><span><b>{ch.name}</b><br /><span class="muted">{ch.model}{ch.serial ? ' · ' + ch.serial : ''}</span></span>
+                {#if cs}<span class="vtag v-{cs}">{STATE_SYMBOLS[cs]} {STATE_LABELS[cs]}</span>{:else}<Icon name="chevron" size={16} />{/if}</a>
             {/each}
           </div>
+          {#if verifying && related.value.children.some(c => verifyState(c) === 'pending')}
+            <button type="button" class="btn small" style="align-self: flex-start" onclick={confirmChildren}>✓ Всички в шасито съвпадат</button>
+          {/if}
         </div>
       {/if}
       {#if related.value?.rows.length}
@@ -353,8 +402,13 @@
 
   <div class="footer-actions">
     <div class="inner">
-      <button class="btn" type="button" onclick={() => submit('check')}>За проверка</button>
-      <button class="btn dark" type="button" onclick={() => submit('confirmed')}>Потвърдено ✓</button>
+      {#if checkable}
+        <button class="btn" type="button" style="color: #9B1C1C" onclick={() => submit(form!.status, 'missing')}>✗ Липсва</button>
+        <button class="btn dark" type="button" onclick={() => submit('confirmed', 'ok')}>{liveDiff.length ? '✎ Запиши разликите' : '✓ Съвпада'} →</button>
+      {:else}
+        <button class="btn" type="button" onclick={() => submit('check')}>За проверка</button>
+        <button class="btn dark" type="button" onclick={() => submit('confirmed')}>Потвърдено ✓</button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -371,5 +425,12 @@
   .linked { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
   .linked-imgs { display: flex; flex-direction: column; gap: 6px; }
   .linked-imgs img { width: 100%; max-height: 120px; object-fit: contain; background: #eef2f1; border-radius: 4px; }
+  .verify { border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; border: 2px solid; background: var(--card); }
+  .v-pending { border-color: #8a979c; }
+  .v-ok { border-color: #15803d; color: #14532d; }
+  .v-changed { border-color: #1d4ed8; }
+  .v-missing { border-color: #b91c1c; color: #7f1d1d; }
+  .v-new { border-color: #7c3aed; }
+  .vdiff { font-size: 14px; }
   .link { background: none; border: 0; padding: 0; color: var(--accent-ink); font-weight: 600; cursor: pointer; text-decoration: underline; }
 </style>
