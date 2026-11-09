@@ -28,8 +28,20 @@
   );
 
   let face = $state<Face>('front');
+  // Show device photos from the type library, or plain role colours. Remembered per browser.
+  let images = $state(true);
+  try {
+    images = localStorage.getItem('rn.rackImages') !== '0';
+  } catch {}
+  function toggleImages() {
+    images = !images;
+    try {
+      localStorage.setItem('rn.rackImages', images ? '1' : '0');
+    } catch {}
+  }
   const rack = $derived(data.value?.rack);
   const devices = $derived(data.value?.devices ?? []);
+  const withImages = $derived(devices.filter(d => d.catalog?.front || d.catalog?.rear).length);
   const unracked = $derived(devices.filter(d => d.position === 0 && !d.parentId));
   const childCount = $derived(devices.reduce((m, d) => (d.parentId ? m.set(d.parentId, (m.get(d.parentId) ?? 0) + 1) : m), new Map<string, number>()));
   // Two faces side by side when there is room; one face with a toggle on phones.
@@ -96,14 +108,17 @@
       {#each legend as [role, bg]}<span><i style="background: {bg}"></i>{role}</span>{/each}
       <span><i style="box-shadow: inset 0 0 0 2px var(--accent)"></i>За проверка</span>
       <span><i style="background: repeating-linear-gradient(45deg, #c9d2cf 0 2px, #fff 2px 4px); border: 1px solid #8a979c"></i>Монтирано от другата страна</span>
+      {#if withImages}
+        <button class="btn small" style="margin-left: auto; height: 32px" aria-pressed={images} onclick={toggleImages}>{images ? 'Цветове' : 'Изгледи'}</button>
+      {/if}
     </div>
 
     <div style="display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start">
       {#if wide}
-        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} label="Лице" />
-        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} label="Гръб" />
+        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} {images} label="Лице" />
+        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} {images} label="Гръб" />
       {:else}
-        <RackElevation {rack} {devices} {face} uPx={20} {childCount} />
+        <RackElevation {rack} {devices} {face} uPx={20} {childCount} {images} />
       {/if}
     </div>
 

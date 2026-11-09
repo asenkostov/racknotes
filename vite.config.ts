@@ -36,7 +36,20 @@ export default defineConfig({
       workbox: {
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}']
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        runtimeCaching: [
+          {
+            // Elevation images from the device type library, kept for offline use.
+            urlPattern: ({ url }) => url.origin === 'https://raw.githubusercontent.com' && url.pathname.startsWith('/netbox-community/devicetype-library/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'dtl-images',
+              expiration: { maxEntries: 3000, maxAgeSeconds: 365 * 24 * 3600 },
+              cacheableResponse: { statuses: [0, 200] }
+            }
+          }
+        ]
       }
     })
   ],

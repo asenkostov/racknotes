@@ -2,6 +2,7 @@
   import type { Device, Face, Rack } from '../../core/model.ts';
   import { elevation, uLabel } from '../../core/rack.ts';
   import { roleColors } from '../../core/roles.ts';
+  import { imgUrl } from './catalog.svelte.ts';
 
   // One face of a rack drawn to scale: every U has the same height, devices sit
   // at their real position, devices mounted on the other face that are full
@@ -13,8 +14,18 @@
     face,
     uPx = 20,
     childCount = new Map<string, number>(),
-    label = ''
-  }: { rack: Rack; devices: Device[]; face: Face; uPx?: number; childCount?: Map<string, number>; label?: string } = $props();
+    label = '',
+    images = true
+  }: { rack: Rack; devices: Device[]; face: Face; uPx?: number; childCount?: Map<string, number>; label?: string; images?: boolean } = $props();
+
+  // Images that failed to load (offline, not cached) fall back to the role colour.
+  let broken = $state(new Set<string>());
+  /** Seen from its own face a device shows its front image; from the other face, its rear. */
+  const imageOf = (d: Device) => {
+    if (!images || !d.catalog) return undefined;
+    const p = d.face === face ? d.catalog.front : d.catalog.rear;
+    return p && !broken.has(p) ? p : undefined;
+  };
 
   const placed = $derived(devices.filter(d => !d.parentId));
   const byId = $derived(new Map(placed.map(d => [d.id, d])));
@@ -46,14 +57,19 @@
           {@const other = d.face !== face}
           {@const c = roleColors(d.role, d.roleColor)}
           {@const n = childCount.get(d.id)}
+          {@const img = imageOf(d)}
           <a
             class="elev-dev"
-            class:other
+            class:img={!!img}
+            class:other={other && !img}
             class:check={d.status === 'check'}
             style={other ? `top: ${top(s.top)}px; height: ${height(s.top, s.bottom) - 1}px` : `top: ${top(s.top)}px; height: ${height(s.top, s.bottom) - 1}px; background: ${c.bg}; color: ${c.fg}`}
             href={'#/d/' + d.id}
             title={`${uLabel(s.top, s.bottom)} · ${d.name || d.model} · ${d.manufacturer} ${d.model}${d.role ? ' · ' + d.role : ''}`}
           >
+            {#if img}
+              <img src={imgUrl(img)} alt="" loading="lazy" onerror={() => (broken = new Set([...broken, img]))} />
+            {/if}
             <span class="elev-name">{d.name || d.model || 'без име'}</span>
             <span class="elev-meta">{other ? 'отзад' : d.status === 'check' ? 'провери' : n ? `+${n} вътре` : ''}</span>
           </a>
@@ -84,6 +100,10 @@
     background: repeating-linear-gradient(45deg, #c9d2cf 0 3px, #fff 3px 6px); color: var(--muted); border: 1px solid #8a979c; font-weight: 500;
   }
   .elev-dev.check { box-shadow: inset 0 0 0 3px var(--accent); }
+  .elev-dev.img { background: #1b2a31 !important; padding: 0; }
+  .elev-dev.img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
+  .elev-dev.img .elev-name, .elev-dev.img .elev-meta { position: relative; background: rgba(19, 35, 43, 0.78); color: #fff; padding: 0 5px; border-radius: 2px; margin: 0 4px; line-height: 1.4; font-size: 11px; }
+  .elev-dev.img .elev-meta:empty { display: none; }
   .elev-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
   .elev-meta { font-size: 10px; opacity: 0.85; white-space: nowrap; }
   .elev-free { color: #8a979c; font-size: 11px; justify-content: center; }

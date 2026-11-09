@@ -1,0 +1,35 @@
+# Refreshes public/catalog/devicetypes.json from netbox-community/devicetype-library
+# once a month (and on demand). Commits only when something changed.
+name: Device type catalog
+
+on:
+  schedule:
+    - cron: '17 3 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Fetch the library (names only, no image blobs)
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/netbox-community/devicetype-library.git /tmp/dtl
+          git -C /tmp/dtl sparse-checkout set device-types
+          git -C /tmp/dtl ls-tree -r --name-only HEAD elevation-images > /tmp/images.txt
+          echo "SHA=$(git -C /tmp/dtl rev-parse HEAD)" >> "$GITHUB_ENV"
+      - run: node scripts/build-catalog.mjs /tmp/dtl /tmp/images.txt "$SHA"
+      - name: Commit if changed
+        run: |
+          if git diff --quiet -- public/catalog; then echo "No changes"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/catalog
+          git commit -m "Refresh device type catalog ($SHA)"
+          git push

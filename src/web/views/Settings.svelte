@@ -139,7 +139,8 @@
 
   <div class="card">
     <h2 style="font-size: 16px">За приложението</h2>
-    <p class="muted" style="margin: 0">RackNotes {__APP_VERSION__} · етап 2: синхронизация на екипа. Следват каталог от NetBox и експорт.</p>
+    <p class="muted" style="margin: 0">RackNotes {__APP_VERSION__} · оглед, план и 3D на помещенията, синхронизация на екипа. Следват каталог от вашия NetBox и експорт.</p>
     <a href="https://github.com/asenkostov/racknotes" target="_blank" rel="noopener">github.com/asenkostov/racknotes</a>
+    <p class="muted" style="margin: 0; font-size: 13px">Каталог на моделите и изгледите им: <a href="https://github.com/netbox-community/devicetype-library" target="_blank" rel="noopener">netbox-community/devicetype-library</a> (CC0).</p>
   </div>
 </main>

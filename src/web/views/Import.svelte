@@ -2,6 +2,7 @@
   import type { ImportPlan, NetboxFile } from '../../core/netbox.ts';
   import { buildImport, classify } from '../../core/netbox.ts';
   import { db, saveMany } from '../lib/db.ts';
+  import { autoLink } from '../lib/catalog.svelte.ts';
   import { importBackup, inspectBackup } from '../lib/backup.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast, ui } from '../lib/ui.svelte.ts';
@@ -85,6 +86,9 @@
     busy = true;
     try {
       const p = $state.snapshot(plan);
+      // Link devices to the type library (images, sizes) where the match is certain.
+      const linked = new Map((await autoLink(p.devices)).map(d => [d.id, d]));
+      p.devices = p.devices.map(d => linked.get(d.id) ?? d);
       await saveMany([
         { table: 'surveys', rows: [p.survey] },
         { table: 'floors', rows: p.floors },

@@ -160,6 +160,7 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
       name: d.name ?? '',
       manufacturer: d.device_type?.manufacturer?.name ?? '',
       model: d.device_type?.model ?? '',
+      ...(d.device_type?.slug ? { typeSlug: d.device_type.slug } : {}),
       role: d.role?.name ?? '',
       uHeight: Math.max(1, height),
       position,

@@ -113,6 +113,10 @@ export interface Device extends Meta {
   parentId?: Id;
   /** Role colour from NetBox (hex without #), used in the rack view. */
   roleColor?: string;
+  /** NetBox device type slug, when the device came from NetBox. */
+  typeSlug?: string;
+  /** Matching entry in the device type library: drives the elevation images. */
+  catalog?: { slug: string; front?: string; rear?: string };
 }
 
 /** NetBox: Cable. Each end is a port on a device in this survey, or something outside it (another rack, a power feed). */

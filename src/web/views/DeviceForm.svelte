@@ -2,6 +2,8 @@
   import { onDestroy, untrack } from 'svelte';
   import type { Device, Face, VerifyStatus } from '../../core/model.ts';
   import { meta, now } from '../../core/model.ts';
+  import { norm, ref, type CatalogType } from '../../core/catalog.ts';
+  import { catalog, imgUrl, loadCatalog } from '../lib/catalog.svelte.ts';
   import { fittingPositions, placementError, uLabel } from '../../core/rack.ts';
   import { db, deleteDevice, discardPhotos, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
@@ -70,6 +72,32 @@
   const models = $derived(distinct(d => d.model));
   const roles = $derived(distinct(d => d.role));
 
+  // --- device type library: suggestions while typing, link on pick ---
+  loadCatalog();
+  const makerList = $derived([...new Set([...manufacturers, ...(catalog.cat?.makers ?? [])])]);
+  let suggestOpen = $state(false);
+  const suggestions = $derived(suggestOpen && form && catalog.cat ? catalog.cat.search(form.manufacturer, form.model, 6) : []);
+  const linked = $derived(form?.catalog ? catalog.cat?.get(form.catalog.slug) : undefined);
+
+  function pick(t: CatalogType) {
+    if (!form) return;
+    form.manufacturer = t.manufacturer;
+    form.model = t.model;
+    form.catalog = ref(t);
+    if (t.uHeight >= 1) form.uHeight = Math.ceil(t.uHeight);
+    else form.position = 0; // 0U: vertical PDUs and the like
+    form.fullDepth = t.fullDepth;
+    suggestOpen = false;
+  }
+  function unlink() {
+    if (form) delete form.catalog;
+  }
+  function modelTyped() {
+    suggestOpen = true;
+    // Editing the model away from the linked type drops the link.
+    if (form?.catalog && linked && ![norm(linked.model), norm(linked.part)].includes(norm(form.model))) delete form.catalog;
+  }
+
   function modelChosen() {
     if (!form) return;
     const prev = ctx.value?.all.find(d => d.model === form!.model && d.id !== form!.id);
@@ -114,6 +142,10 @@
       status
     };
     if (!d.name && !d.model) return (error = 'Въведи поне име или модел.');
+    if (!d.catalog && catalog.cat) {
+      const t = catalog.cat.exact(d.manufacturer, d.model, d.typeSlug);
+      if (t) d.catalog = ref(t);
+    }
     if (d.mgmtIp && !/^[0-9a-fA-F:.]+$/.test(d.mgmtIp)) return (error = 'IP адресът изглежда невалиден (без маска).');
     const err = placementError(ctx.value.rack.uHeight, others, d);
     if (err) return (error = err);
@@ -206,13 +238,37 @@
         <div class="field">
           <label for="mf">Производител</label>
           <input id="mf" list="mf-list" bind:value={form.manufacturer} autocomplete="off" />
-          <datalist id="mf-list">{#each manufacturers as v}<option value={v}></option>{/each}</datalist>
+          <datalist id="mf-list">{#each makerList as v}<option value={v}></option>{/each}</datalist>
         </div>
         <div class="field">
           <label for="md">Модел</label>
-          <input id="md" list="md-list" bind:value={form.model} onchange={modelChosen} autocomplete="off" />
+          <input id="md" list="md-list" bind:value={form.model} onchange={modelChosen} oninput={modelTyped} autocomplete="off" />
           <datalist id="md-list">{#each models as v}<option value={v}></option>{/each}</datalist>
         </div>
+        {#if suggestions.length}
+          <div class="suggest" role="listbox" aria-label="Модели от каталога">
+            <div class="suggest-head">От каталога <button type="button" class="link" onclick={() => (suggestOpen = false)}>скрий</button></div>
+            {#each suggestions as t (t.slug)}
+              <button type="button" role="option" aria-selected="false" class="suggest-row" onclick={() => pick(t)}>
+                <span class="thumb">{#if t.front}<img src={imgUrl(t.front)} alt="" loading="lazy" />{/if}</span>
+                <span class="suggest-text">
+                  <b>{t.model}</b>
+                  <span class="muted">{t.manufacturer}{t.part !== t.model ? ' · ' + t.part : ''} · {t.uHeight ? t.uHeight + 'U' : '0U'}{t.front ? '' : ' · без изглед'}</span>
+                </span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+        {#if form.catalog}
+          <div class="linked">
+            <div class="linked-imgs">
+              {#if form.catalog.front}<img src={imgUrl(form.catalog.front)} alt="Отпред" />{/if}
+              {#if form.catalog.rear}<img src={imgUrl(form.catalog.rear)} alt="Отзад" />{/if}
+              {#if !form.catalog.front && !form.catalog.rear}<span class="muted" style="font-size: 13px">Моделът е в каталога, но няма изображение.</span>{/if}
+            </div>
+            <span class="muted" style="font-size: 13px">Свързано с каталога: <span class="mono">{form.catalog.slug}</span> · <button type="button" class="link" onclick={unlink}>откачи</button></span>
+          </div>
+        {/if}
         <div class="field"><label for="nm">Име (hostname)</label><input id="nm" class="mono" bind:value={form.name} autocomplete="off" autocapitalize="characters" /></div>
         <div class="field">
           <label for="rl">Роля</label>
@@ -302,3 +358,18 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .suggest, .linked { grid-column: 1 / -1; background: var(--card); border: 1px solid var(--field); border-radius: 10px; overflow: hidden; }
+  .suggest-head { display: flex; justify-content: space-between; padding: 8px 12px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+  .suggest-row { display: flex; gap: 10px; align-items: center; width: 100%; padding: 8px 12px; background: none; border: 0; border-top: 1px solid var(--line-2); text-align: left; cursor: pointer; min-height: 52px; }
+  .suggest-row:hover { background: #f6f8f7; }
+  .thumb { width: 96px; height: 22px; flex: none; background: #eef2f1; border-radius: 3px; overflow: hidden; display: block; }
+  .thumb img { width: 100%; height: 100%; object-fit: fill; display: block; }
+  .suggest-text { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+  .suggest-text b, .suggest-text span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .linked { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .linked-imgs { display: flex; flex-direction: column; gap: 6px; }
+  .linked-imgs img { width: 100%; max-height: 120px; object-fit: contain; background: #eef2f1; border-radius: 4px; }
+  .link { background: none; border: 0; padding: 0; color: var(--accent-ink); font-weight: 600; cursor: pointer; text-decoration: underline; }
+</style>

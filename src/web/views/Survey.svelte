@@ -2,7 +2,7 @@
   import type { Floor, Rack, Room, SurveyStatus } from '../../core/model.ts';
   import { meta } from '../../core/model.ts';
   import { usedUnits } from '../../core/rack.ts';
-  import { db, deleteSurvey, save } from '../lib/db.ts';
+  import { db, deleteSurvey, save, saveMany } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast } from '../lib/ui.svelte.ts';
@@ -12,6 +12,7 @@
   import Status from '../lib/Status.svelte';
   import Photos from '../lib/Photos.svelte';
   import { downloadBlob, exportSurvey } from '../lib/backup.ts';
+  import { autoLink, cacheImages } from '../lib/catalog.svelte.ts';
 
   let { id }: { id: string } = $props();
 
@@ -92,6 +93,25 @@
     if (survey) await save('surveys', { ...$state.snapshot(survey), notes });
     notesOpen = false;
   }
+  // --- elevation images from the device type library ---
+  const linkedCount = $derived(data.value?.devices.filter(d => d.catalog).length ?? 0);
+  const imageCount = $derived(data.value?.devices.filter(d => d.catalog?.front || d.catalog?.rear).length ?? 0);
+  let imgBusy = $state('');
+  async function prepareImages() {
+    const v = data.value;
+    if (!v) return;
+    imgBusy = 'Свързвам моделите…';
+    try {
+      const changed = await autoLink($state.snapshot(v.devices));
+      if (changed.length) await saveMany([{ table: 'devices', rows: changed }]);
+      const all = [...v.devices.filter(d => !changed.some(c => c.id === d.id)), ...changed];
+      const res = await cacheImages(all, (done, total) => (imgBusy = `Свалям изгледите ${done} / ${total}…`));
+      toast(`Свързани още ${changed.length}. Свалени изгледи: ${res.ok}${res.failed ? `, неуспешни: ${res.failed}` : ''}.`);
+    } finally {
+      imgBusy = '';
+    }
+  }
+
   let exporting = $state(false);
   async function download(thenRemove: boolean) {
     if (!survey) return;
@@ -194,6 +214,11 @@
         <span><span style="font-weight: 600">Бележки</span><br /><span class="muted">{survey.notes || 'няма'}</span></span>
         <Icon name="chevron" size={18} />
       </button>
+    </div>
+    <div class="card">
+      <h3 style="font-size: 15px">Изгледи на моделите</h3>
+      <p class="muted" style="margin: 0">{linkedCount} от {data.value?.devices.length ?? 0} устройства са свързани с каталога, {imageCount} имат изглед. Преди обект без връзка свали изгледите, за да се виждат и офлайн.</p>
+      <button class="btn small dark" style="align-self: flex-start" onclick={prepareImages} disabled={!!imgBusy}>{imgBusy || 'Свържи моделите и свали изгледите'}</button>
     </div>
     <div class="card">
       <h3 style="font-size: 15px">Файл</h3>
