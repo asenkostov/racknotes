@@ -2,7 +2,7 @@
   import type { Floor, Rack } from '../../core/model.ts';
   import { meta } from '../../core/model.ts';
   import { usedUnits } from '../../core/rack.ts';
-  import { footprint } from '../../core/plan.ts';
+  import { ITEM_DEFS, footprint, itemBox } from '../../core/plan.ts';
   import { db, deleteRoom, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
@@ -123,6 +123,11 @@
         {@const D = room.depthM * 100}
         <svg viewBox={`-10 -10 ${W + 20} ${D + 20}`} style="width: 100%; max-height: 220px" aria-hidden="true">
           <rect x="0" y="0" width={W} height={D} fill="#F4F6F5" stroke="#13232B" stroke-width={Math.max(W, D) / 120} />
+          {#each room.items ?? [] as it}
+            {@const b = itemBox(it)}
+            {#if b}<rect x={b.x * 100} y={b.y * 100} width={b.w * 100} height={b.h * 100} fill={ITEM_DEFS[it.kind].color} opacity="0.45" />
+            {:else}<circle cx={it.x * 100} cy={it.y * 100} r={Math.max(room.widthM ?? 1, room.depthM ?? 1) * 1.6} fill={ITEM_DEFS[it.kind].color} />{/if}
+          {/each}
           {#each data.value?.racks ?? [] as r}
             {@const b = footprint(r)}
             {#if b}<rect x={b.x * 100} y={b.y * 100} width={b.w * 100} height={b.h * 100} fill="#2B3A40" stroke="#F4F6F5" stroke-width={Math.max(W, D) / 200} />{/if}

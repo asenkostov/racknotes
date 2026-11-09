@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkPlan, clampInto, clearance, firstFreeSpot, footprint, rackSwings } from '../src/core/plan.ts';
+import { checkItems, checkPlan, clampInto, clearance, firstFreeSpot, footprint, rackSwings } from '../src/core/plan.ts';
 import type { Rack, Room } from '../src/core/model.ts';
 
 const room: Room = { id: 'room', surveyId: 's', floorId: 'f', name: 'R', createdAt: '', updatedAt: '', widthM: 6, depthM: 4.5 };
@@ -78,5 +78,20 @@ describe('rack doors', () => {
     const texts = checkPlan(room, [r]).map(i => i.text);
     expect(texts.some(t => t.includes('вратата отзад не може'))).toBe(true);
     expect(texts.some(t => t.includes('вратата отпред'))).toBe(false);
+  });
+});
+
+describe('room items', () => {
+  it('blocks rack clearance with floor items but not wall units, and checks item front space', () => {
+    const r = rack('a', 1, 0.6, 'down'); // front edge at y = 1.8
+    const ups = { id: 'u', kind: 'ups' as const, x: 1, y: 2.2, facing: 'up' as const };
+    const wallAc = { id: 'w', kind: 'ac' as const, sub: 'wall', x: 1, y: 2.2 };
+    const withUps = checkPlan({ ...room, items: [ups] }, [r]).map(i => i.text);
+    expect(withUps.some(t => t.includes('отпред има само 0,40 m'))).toBe(true);
+    const withAc = checkPlan({ ...room, items: [wallAc] }, [r]).map(i => i.text);
+    expect(withAc.some(t => t.includes('отпред 2,10 m') || t.includes('отпред'))).toBe(true);
+    expect(withAc.some(t => t.includes('само'))).toBe(false);
+    const items = checkItems({ ...room, items: [ups] }, [r]).map(i => i.text);
+    expect(items).toEqual(['Подов UPS / батерии: отпред има само 0,40 m (нужни поне 0,80 m).']);
   });
 });

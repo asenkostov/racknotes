@@ -1,7 +1,7 @@
 // Room plan geometry: rack footprints, placement, service clearance checks.
 // Units: metres. Origin: top-left inner corner of the room; x → right, y → down.
 
-import type { Door, Facing, Rack, RackDoor, Room } from './model.ts';
+import type { Door, Facing, ItemKind, Rack, RackDoor, Room, RoomItem } from './model.ts';
 
 export const DEFAULT_RACK_MM = { width: 600, depth: 1000 };
 export const MIN_FRONT_M = 1.0;
@@ -77,6 +77,7 @@ export function clearance(box: Box, side: Facing, others: Box[], room: { widthM:
 export interface PlanIssue {
   level: 'ok' | 'warn' | 'error';
   rackId?: string;
+  itemId?: string;
   text: string;
 }
 
@@ -155,12 +156,13 @@ export function checkPlan(room: Room, racks: Rack[]): PlanIssue[] {
   if (!room.widthM || !room.depthM) return [];
   const dims = { widthM: room.widthM, depthM: room.depthM };
   const placed = racks.map(r => ({ r, b: footprint(r) })).filter((x): x is { r: Rack; b: Box } => !!x.b);
+  const floorItems = (room.items ?? []).filter(blocksFloor).map(itemBox).filter((b): b is Box => !!b);
   const out: PlanIssue[] = [];
   for (const { r, b } of placed) {
     if (b.x < -1e-9 || b.y < -1e-9 || b.x + b.w > dims.widthM + 1e-9 || b.y + b.h > dims.depthM + 1e-9)
       out.push({ level: 'error', rackId: r.id, text: `${r.name} излиза извън помещението.` });
     for (const o of placed) if (o.r.id > r.id && overlaps(b, o.b)) out.push({ level: 'error', rackId: r.id, text: `${r.name} се застъпва с ${o.r.name}.` });
-    const others = placed.filter(o => o.r.id !== r.id).map(o => o.b);
+    const others = [...placed.filter(o => o.r.id !== r.id).map(o => o.b), ...floorItems];
     const front = clearance(b, r.plan!.facing, others, dims);
     const rear = clearance(b, opposite[r.plan!.facing], others, dims);
     out.push(
@@ -196,4 +198,94 @@ export function firstFreeSpot(room: { widthM: number; depthM: number }, size: { 
         if (!others.some(o => overlaps(b, o))) return { x: tidy(x), y: tidy(y), facing: 'down' };
       }
   return { x: 0, y: 0, facing: 'down' };
+}
+
+// ---------------------------------------------------------------------------
+// Other things in the room.
+
+export interface ItemDef {
+  label: string;
+  /** Box items take floor (or wall) space; points are markers. */
+  shape: 'box' | 'point';
+  /** Default size in mm (width along the front, depth away from it). */
+  size?: { w: number; d: number };
+  /** Free space needed in front, metres. */
+  front?: number;
+  subs?: Record<string, string>;
+  /** Mounted on a wall, above the floor: does not block floor space. */
+  wall?: (sub?: string) => boolean;
+  /** Short symbol for plan markers. */
+  sym: string;
+  color: string;
+}
+
+export const ITEM_DEFS: Record<ItemKind, ItemDef> = {
+  panel: { label: 'Ел. табло', shape: 'box', size: { w: 800, d: 250 }, front: 0.8, sym: 'ЕТ', color: '#B45309' },
+  ups: { label: 'Подов UPS / батерии', shape: 'box', size: { w: 600, d: 900 }, front: 0.8, sym: 'UPS', color: '#047857' },
+  ac: {
+    label: 'Климатик',
+    shape: 'box',
+    size: { w: 900, d: 250 },
+    subs: { wall: 'стенен', floor: 'подов', inrow: 'между шкафовете' },
+    front: 0.8,
+    wall: sub => (sub ?? 'wall') === 'wall',
+    sym: 'AC',
+    color: '#0369A1'
+  },
+  column: { label: 'Колона / препятствие', shape: 'box', size: { w: 400, d: 400 }, sym: '', color: '#57534E' },
+  fire: { label: 'Пожарогасене', shape: 'point', subs: { extinguisher: 'пожарогасител', system: 'система / бутилка' }, sym: 'ПГ', color: '#B91C1C' },
+  detector: { label: 'Детектор', shape: 'point', subs: { smoke: 'дим', water: 'вода', temp: 'температура' }, sym: 'Д', color: '#9333EA' },
+  camera: { label: 'Камера', shape: 'point', sym: 'К', color: '#1F2937' },
+  reader: { label: 'Четец за достъп', shape: 'point', sym: 'ЧД', color: '#1F2937' },
+  note: { label: 'Бележка', shape: 'point', sym: '!', color: '#C2410C' }
+};
+
+/** Default size per variant (in-row and floor ACs are not shaped like a wall unit). */
+export function itemSize(item: Pick<RoomItem, 'kind' | 'sub' | 'widthMm' | 'depthMm'>): { w: number; d: number } {
+  const def = ITEM_DEFS[item.kind].size ?? { w: 0, d: 0 };
+  const base = item.kind === 'ac' && item.sub === 'inrow' ? { w: 300, d: 1200 } : item.kind === 'ac' && item.sub === 'floor' ? { w: 800, d: 600 } : def;
+  return { w: (item.widthMm ?? base.w) / 1000, d: (item.depthMm ?? base.d) / 1000 };
+}
+
+/** Footprint of a box item on the plan, null for points. */
+export function itemBox(item: RoomItem): Box | null {
+  if (ITEM_DEFS[item.kind].shape !== 'box') return null;
+  const { w, d } = itemSize(item);
+  const across = !item.facing || item.facing === 'up' || item.facing === 'down';
+  return { x: item.x, y: item.y, w: across ? w : d, h: across ? d : w };
+}
+
+/** Items that take floor space (wall units hang above it). */
+export function blocksFloor(item: RoomItem): boolean {
+  const def = ITEM_DEFS[item.kind];
+  return def.shape === 'box' && !def.wall?.(item.sub);
+}
+
+export const itemName = (i: RoomItem) => i.name?.trim() || (ITEM_DEFS[i.kind].subs && i.sub ? `${ITEM_DEFS[i.kind].label} (${ITEM_DEFS[i.kind].subs![i.sub]})` : ITEM_DEFS[i.kind].label);
+
+/** Checks for items: inside the room, not on top of racks or each other, front space where it matters. */
+export function checkItems(room: Room, racks: Rack[]): PlanIssue[] {
+  if (!room.widthM || !room.depthM) return [];
+  const dims = { widthM: room.widthM, depthM: room.depthM };
+  const rackBoxes = racks.map(r => ({ name: r.name, b: footprint(r) })).filter((x): x is { name: string; b: Box } => !!x.b);
+  const items = (room.items ?? []).map(i => ({ i, b: itemBox(i) }));
+  const out: PlanIssue[] = [];
+  for (const { i, b } of items) {
+    const name = itemName(i);
+    if (!b) {
+      if (i.x < 0 || i.y < 0 || i.x > dims.widthM || i.y > dims.depthM) out.push({ level: 'error', itemId: i.id, text: `${name} е извън помещението.` });
+      continue;
+    }
+    if (b.x < -1e-9 || b.y < -1e-9 || b.x + b.w > dims.widthM + 1e-9 || b.y + b.h > dims.depthM + 1e-9) out.push({ level: 'error', itemId: i.id, text: `${name} излиза извън помещението.` });
+    if (!blocksFloor(i)) continue;
+    for (const r of rackBoxes) if (overlaps(b, r.b)) out.push({ level: 'error', itemId: i.id, text: `${name} се застъпва с ${r.name}.` });
+    for (const o of items) if (o.i.id > i.id && o.b && blocksFloor(o.i) && overlaps(b, o.b)) out.push({ level: 'error', itemId: i.id, text: `${name} се застъпва с ${itemName(o.i)}.` });
+    const need = ITEM_DEFS[i.kind].front;
+    if (need) {
+      const others = [...rackBoxes.map(r => r.b), ...items.filter(o => o.i.id !== i.id && o.b && blocksFloor(o.i)).map(o => o.b!)];
+      const free = clearance(b, i.facing ?? 'down', others, dims);
+      if (free < need) out.push({ level: 'warn', itemId: i.id, text: `${name}: отпред има само ${fmt(free)} (нужни поне ${fmt(need)}).` });
+    }
+  }
+  return out;
 }

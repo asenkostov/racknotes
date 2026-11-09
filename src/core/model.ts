@@ -54,6 +54,25 @@ export interface Room extends Meta {
   widthM?: number;
   depthM?: number;
   doors?: Door[];
+  /** Other things in the room: panels, UPS, AC, columns, safety devices, notes. */
+  items?: RoomItem[];
+}
+
+export type ItemKind = 'panel' | 'ups' | 'ac' | 'column' | 'fire' | 'detector' | 'camera' | 'reader' | 'note';
+/** Something in the room that is not a rack. Box items have a size; the rest are points. */
+export interface RoomItem {
+  id: Id;
+  kind: ItemKind;
+  /** Variant, e.g. AC 'wall' | 'floor' | 'inrow'. */
+  sub?: string;
+  name?: string;
+  notes?: string;
+  /** Box items: top-left corner, like racks. Point items: the point itself. Metres. */
+  x: number;
+  y: number;
+  widthMm?: number;
+  depthMm?: number;
+  facing?: Facing;
 }
 
 /** NetBox: Rack. */
@@ -118,7 +137,7 @@ export interface Cable extends Meta {
   notes: string;
 }
 
-export type OwnerKind = 'survey' | 'room' | 'rack' | 'device';
+export type OwnerKind = 'survey' | 'room' | 'rack' | 'device' | 'item';
 
 export interface Photo extends Meta {
   surveyId: Id;
