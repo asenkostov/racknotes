@@ -13,6 +13,8 @@
   import Photos from '../lib/Photos.svelte';
   import { downloadBlob, exportSurvey } from '../lib/backup.ts';
   import { autoLink, cacheImages } from '../lib/catalog.svelte.ts';
+  import { baseline, diffCsv, summary } from '../../core/verify.ts';
+  import { ui } from '../lib/ui.svelte.ts';
 
   let { id }: { id: string } = $props();
 
@@ -93,6 +95,35 @@
     if (survey) await save('surveys', { ...$state.snapshot(survey), notes });
     notesOpen = false;
   }
+  // --- verification against NetBox ---
+  const nbCount = $derived(data.value?.devices.filter(d => d.netboxId).length ?? 0);
+  const vsum = $derived(summary(data.value?.devices ?? []));
+  const verifying = $derived(!!survey?.verify);
+  async function startVerify() {
+    const v = data.value;
+    if (!v || !survey) return;
+    // Devices imported before baselines existed: what they say now is what NetBox said.
+    const missing = v.devices.filter(d => d.netboxId && !d.nb).map(d => ({ ...$state.snapshot(d), nb: baseline($state.snapshot(d)) }));
+    if (missing.length) await saveMany([{ table: 'devices', rows: missing }]);
+    await save('surveys', { ...$state.snapshot(survey), verify: { startedAt: new Date().toISOString(), by: ui.author || undefined } });
+    toast('Проверката започна. Отвори шкаф и тръгни отгоре надолу.');
+  }
+  async function stopVerify() {
+    if (!survey || !confirm('Да спра ли режима на проверка? Отбелязаното остава; може да го пуснеш отново.')) return;
+    const { verify: _v, ...rest } = $state.snapshot(survey);
+    await save('surveys', rest);
+  }
+  function exportDiff() {
+    const v = data.value;
+    if (!v || !survey) return;
+    const racks = new Map(v.racks.map(r => [r.id, r.name]));
+    const devs = new Map(v.devices.map(d => [d.id, d.name || d.model]));
+    const csv = diffCsv($state.snapshot(v.devices), id => racks.get(id) ?? '?', id => devs.get(id) ?? '?');
+    const name = `racknotes-proverka-${survey.site || survey.tenant || 'obekt'}-${new Date().toISOString().slice(0, 10)}.csv`.replace(/[^\p{L}\p{N}._-]+/gu, '-');
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), name);
+  }
+  const rackSum = (rackId: string) => summary(data.value?.devices.filter(d => d.rackId === rackId) ?? []);
+
   // --- elevation images from the device type library ---
   const linkedCount = $derived(data.value?.devices.filter(d => d.catalog).length ?? 0);
   const imageCount = $derived(data.value?.devices.filter(d => d.catalog?.front || d.catalog?.rear).length ?? 0);
@@ -215,6 +246,33 @@
         <Icon name="chevron" size={18} />
       </button>
     </div>
+    {#if nbCount}
+      <div class="card">
+        <h3 style="font-size: 15px">Проверка спрямо NetBox</h3>
+        {#if !verifying}
+          <p class="muted" style="margin: 0">{nbCount} устройства са внесени от NetBox. В режим на проверка всяко се отбелязва на място: съвпада, различно (поправяш полетата) или липсва; новите се добавят както обикновено. Накрая изтегляш разликите.</p>
+          <button class="btn small dark" style="align-self: flex-start" onclick={startVerify}>Започни проверка</button>
+        {:else}
+          <div class="bar"><div style="width: {vsum.total ? Math.round((vsum.done / vsum.total) * 100) : 0}%"></div></div>
+          <span><b>{vsum.done} от {vsum.total}</b> проверени · <span class="vtag v-ok">✓ {vsum.ok}</span> <span class="vtag v-changed">✎ {vsum.changed}</span> <span class="vtag v-missing">✗ {vsum.missing}</span> <span class="vtag v-new">+ {vsum.new}</span></span>
+          <div class="list">
+            {#each data.value.racks as r (r.id)}
+              {@const rs = rackSum(r.id)}
+              {#if rs.total || rs.new}
+                <a href={'#/r/' + r.id}>
+                  <span><b class="mono">{r.name}</b><br /><span class="muted" style="font-size: 13px">{rs.done} от {rs.total}{rs.changed ? ` · ✎ ${rs.changed}` : ''}{rs.missing ? ` · ✗ ${rs.missing}` : ''}{rs.new ? ` · + ${rs.new}` : ''}</span></span>
+                  {#if rs.pending}<span class="vtag v-pending">остават {rs.pending}</span>{:else}<span class="vtag v-ok">✓ готов</span>{/if}
+                </a>
+              {/if}
+            {/each}
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap">
+            <button class="btn small dark" onclick={exportDiff}>Изтегли разликите (CSV)</button>
+            <button class="btn small" onclick={stopVerify}>Спри проверката</button>
+          </div>
+        {/if}
+      </div>
+    {/if}
     <div class="card">
       <h3 style="font-size: 15px">Изгледи на моделите</h3>
       <p class="muted" style="margin: 0">{linkedCount} от {data.value?.devices.length ?? 0} устройства са свързани с каталога, {imageCount} имат изглед. Преди обект без връзка свали изгледите, за да се виждат и офлайн.</p>

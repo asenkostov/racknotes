@@ -25,6 +25,8 @@ export interface Survey extends Meta {
   status: SurveyStatus;
   author: string;
   notes: string;
+  /** Verification against NetBox is running: badges and progress are shown. */
+  verify?: { startedAt: string; by?: string };
 }
 
 /** NetBox: Location (nested Site › floor › room). */
@@ -135,6 +137,24 @@ export interface Device extends Meta {
   typeSlug?: string;
   /** Matching entry in the device type library: drives the elevation images. */
   catalog?: { slug: string; front?: string; rear?: string };
+  /** What NetBox said when the device was imported; the baseline for verification. */
+  nb?: DeviceBaseline;
+  /** Field check of a NetBox device. Unset = not checked yet; edits show up as differences from nb. */
+  verify?: 'ok' | 'missing';
+}
+
+export interface DeviceBaseline {
+  name: string;
+  manufacturer: string;
+  model: string;
+  serial: string;
+  assetTag: string;
+  rackId: Id;
+  position: number;
+  face: Face;
+  mgmtIp: string;
+  role: string;
+  parentId?: Id;
 }
 
 /** NetBox: Cable. Each end is a port on a device in this survey, or something outside it (another rack, a power feed). */

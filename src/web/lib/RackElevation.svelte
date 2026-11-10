@@ -3,6 +3,7 @@
   import { elevation, uLabel } from '../../core/rack.ts';
   import { roleColors } from '../../core/roles.ts';
   import { imgUrl } from './catalog.svelte.ts';
+  import { STATE_LABELS, STATE_SYMBOLS, verifyState } from '../../core/verify.ts';
 
   // One face of a rack drawn to scale: every U has the same height, devices sit
   // at their real position, devices mounted on the other face that are full
@@ -15,8 +16,15 @@
     uPx = 20,
     childCount = new Map<string, number>(),
     label = '',
-    images = true
-  }: { rack: Rack; devices: Device[]; face: Face; uPx?: number; childCount?: Map<string, number>; label?: string; images?: boolean } = $props();
+    images = true,
+    verifying = false
+  }: { rack: Rack; devices: Device[]; face: Face; uPx?: number; childCount?: Map<string, number>; label?: string; images?: boolean; verifying?: boolean } = $props();
+  /** Chassis state also reflects its children: anything pending inside keeps it pending. */
+  const stateOf = (d: Device) => {
+    const own = verifyState(d);
+    if (own !== 'ok') return own;
+    return devices.some(c => c.parentId === d.id && verifyState(c) === 'pending') ? 'pending' : own;
+  };
 
   // Images that failed to load (offline, not cached) fall back to the role colour.
   let broken = $state(new Set<string>());
@@ -58,11 +66,13 @@
           {@const c = roleColors(d.role, d.roleColor)}
           {@const n = childCount.get(d.id)}
           {@const img = imageOf(d)}
+          {@const vs = verifying ? stateOf(d) : null}
           <a
             class="elev-dev"
             class:img={!!img}
             class:other={other && !img}
-            class:check={d.status === 'check'}
+            class:check={!verifying && d.status === 'check'}
+            class:missing={vs === 'missing'}
             style={other ? `top: ${top(s.top)}px; height: ${height(s.top, s.bottom) - 1}px` : `top: ${top(s.top)}px; height: ${height(s.top, s.bottom) - 1}px; background: ${c.bg}; color: ${c.fg}`}
             href={'#/d/' + d.id}
             title={`${uLabel(s.top, s.bottom)} · ${d.name || d.model} · ${d.manufacturer} ${d.model}${d.role ? ' · ' + d.role : ''}`}
@@ -71,6 +81,7 @@
               <img src={imgUrl(img)} alt="" loading="lazy" onerror={() => (broken = new Set([...broken, img]))} />
             {/if}
             <span class="elev-name">{d.name || d.model || 'без име'}</span>
+            {#if vs}<span class="vbadge v-{vs}" title={STATE_LABELS[vs]}>{STATE_SYMBOLS[vs]}</span>{/if}
             <span class="elev-meta">{other ? 'отзад' : d.status === 'check' ? 'провери' : n ? `+${n} вътре` : ''}</span>
           </a>
         {/if}
@@ -104,6 +115,13 @@
   .elev-dev.img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; }
   .elev-dev.img .elev-name, .elev-dev.img .elev-meta { position: relative; background: rgba(19, 35, 43, 0.78); color: #fff; padding: 0 5px; border-radius: 2px; margin: 0 4px; line-height: 1.4; font-size: 11px; }
   .elev-dev.img .elev-meta:empty { display: none; }
+  .vbadge { position: relative; z-index: 1; flex: none; order: 3; width: 18px; height: 18px; max-height: 100%; border-radius: 50%; display: grid; place-items: center; font: 700 11px var(--sans); color: #fff; box-shadow: 0 0 0 1.5px #fff; }
+  .vbadge.v-pending { background: #fff; color: #4a5b62; box-shadow: 0 0 0 1.5px #8a979c; }
+  .vbadge.v-ok { background: #15803d; }
+  .vbadge.v-changed { background: #1d4ed8; }
+  .vbadge.v-missing { background: #b91c1c; }
+  .vbadge.v-new { background: #7c3aed; }
+  .elev-dev.missing { opacity: 0.55; text-decoration: line-through; }
   .elev-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
   .elev-meta { font-size: 10px; opacity: 0.85; white-space: nowrap; }
   .elev-free { color: #8a979c; font-size: 11px; justify-content: center; }
