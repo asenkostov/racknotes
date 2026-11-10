@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ImportPlan, NetboxFile } from '../../core/netbox.ts';
-  import { buildImport, classify } from '../../core/netbox.ts';
+  import { buildImport, classify, mergeImport } from '../../core/netbox.ts';
   import { db, saveMany } from '../lib/db.ts';
   import { autoLink } from '../lib/catalog.svelte.ts';
   import { importBackup, inspectBackup } from '../lib/backup.ts';
@@ -85,7 +85,18 @@
     if (!plan) return;
     busy = true;
     try {
-      const p = $state.snapshot(plan);
+      const fresh = $state.snapshot(plan);
+      // Refreshing an existing survey: keep everything entered in the field (plans, doors,
+      // items, floor placement, edits, verification marks); NetBox updates only its own fields.
+      const byId = async <T extends { id: string }>(table: 'surveys' | 'floors' | 'rooms' | 'racks' | 'devices', ids: string[]) =>
+        new Map(((await db.table(table).bulkGet(ids)).filter(Boolean) as T[]).map(r => [r.id, r]));
+      const p = mergeImport(fresh, {
+        surveys: await byId('surveys', [fresh.survey.id]),
+        floors: await byId('floors', fresh.floors.map(x => x.id)),
+        rooms: await byId('rooms', fresh.rooms.map(x => x.id)),
+        racks: await byId('racks', fresh.racks.map(x => x.id)),
+        devices: await byId('devices', fresh.devices.map(x => x.id))
+      });
       // Link devices to the type library (images, sizes) where the match is certain.
       const linked = new Map((await autoLink(p.devices)).map(d => [d.id, d]));
       p.devices = p.devices.map(d => linked.get(d.id) ?? d);

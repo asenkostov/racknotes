@@ -186,7 +186,11 @@
   }
 
   async function remove() {
-    if (!form || !confirm(`Да изтрия ли ${form.name || form.model || 'устройството'}?`)) return;
+    if (!form) return;
+    const q = checkable
+      ? `${form.name || form.model} е от NetBox. Ако го няма на място, натисни „✗ Липсва“ — така влиза в разликите. Да го изтрия ли все пак?`
+      : `Да изтрия ли ${form.name || form.model || 'устройството'}?`;
+    if (!confirm(q)) return;
     await deleteDevice(form.id);
     saved = true;
     go('/r/' + form.rackId);
@@ -290,7 +294,7 @@
           <datalist id="md-list">{#each models as v}<option value={v}></option>{/each}</datalist>
         </div>
         {#if suggestions.length}
-          <div class="suggest" role="listbox" aria-label="Модели от каталога">
+          <div class="suggest" role="listbox" aria-label="Предложения от каталога">
             <div class="suggest-head">От каталога <button type="button" class="link" onclick={() => (suggestOpen = false)}>скрий</button></div>
             {#each suggestions as t (t.slug)}
               <button type="button" role="option" aria-selected="false" class="suggest-row" onclick={() => pick(t)}>
