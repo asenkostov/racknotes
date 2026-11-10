@@ -229,3 +229,65 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
 
   return { survey, floors: [floor], rooms: [...rooms.values()], racks, devices, cables, warnings, skipped: { cables: skippedCables, devices: skippedDevices } };
 }
+
+// ---------------------------------------------------------------------------
+// Refreshing a survey from NetBox again ("Обнови от NetBox").
+
+export interface Existing {
+  surveys: Map<string, Survey>;
+  floors: Map<string, Floor>;
+  rooms: Map<string, Room>;
+  racks: Map<string, Rack>;
+  devices: Map<string, Device>;
+}
+
+/** Fields NetBox owns per table; everything else on an existing record was entered in RackNotes and is kept. */
+const NETBOX_OWNED = {
+  surveys: ['tenant', 'site', 'netboxId'],
+  floors: ['netboxId'],
+  rooms: ['name', 'floorId', 'netboxId'],
+  racks: ['name', 'uHeight', 'roomId', 'netboxId']
+} as const;
+
+function overlay<T extends object>(existing: T | undefined, incoming: T, owned: readonly string[]): T {
+  if (!existing) return incoming;
+  const out = { ...existing } as Record<string, unknown>;
+  for (const k of owned) if (k in incoming) out[k] = (incoming as Record<string, unknown>)[k];
+  return out as T;
+}
+
+/**
+ * Device refresh as a three-way merge over the verification fields: where the
+ * field person changed a value (it differs from the old NetBox baseline) the
+ * local value stays; otherwise NetBox's new value is taken. The baseline moves
+ * to the new NetBox data, so differences stay meaningful. Marks, photos links,
+ * catalog links and notes are kept.
+ */
+export function mergeDevice(local: Device | undefined, incoming: Device): Device {
+  if (!local) return incoming;
+  const oldNb = local.nb ?? baseline(local);
+  const merged: Device = { ...incoming, id: local.id, createdAt: local.createdAt };
+  for (const k of ['name', 'manufacturer', 'model', 'serial', 'assetTag', 'rackId', 'position', 'face', 'mgmtIp', 'role', 'parentId'] as const) {
+    const changedHere = String(local[k] ?? '') !== String(oldNb[k] ?? '');
+    if (changedHere) (merged as unknown as Record<string, unknown>)[k] = local[k];
+  }
+  if (local.verify) merged.verify = local.verify;
+  else delete merged.verify;
+  if (local.catalog && !incoming.catalog) merged.catalog = local.catalog;
+  if (local.notes && local.notes !== incoming.notes) merged.notes = local.notes;
+  if (local.status === 'check') merged.status = 'check';
+  merged.nb = baseline(incoming);
+  return merged;
+}
+
+/** Apply an import plan on top of what is already stored, keeping field work. */
+export function mergeImport(plan: ImportPlan, existing: Existing): ImportPlan {
+  return {
+    ...plan,
+    survey: overlay(existing.surveys.get(plan.survey.id), plan.survey, NETBOX_OWNED.surveys),
+    floors: plan.floors.map(f => overlay(existing.floors.get(f.id), f, NETBOX_OWNED.floors)),
+    rooms: plan.rooms.map(r => overlay(existing.rooms.get(r.id), r, NETBOX_OWNED.rooms)),
+    racks: plan.racks.map(r => overlay(existing.racks.get(r.id), r, NETBOX_OWNED.racks)),
+    devices: plan.devices.map(d => mergeDevice(existing.devices.get(d.id), d))
+  };
+}

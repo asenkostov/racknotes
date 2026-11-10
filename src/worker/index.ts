@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
-import type { SyncRequest } from '../core/sync.ts';
+import type { Change, SyncRequest, SyncResponse, SyncTable } from '../core/sync.ts';
 import { MAX_CHANGES_PER_REQUEST, MAX_PHOTO_BYTES, validateChange } from '../core/sync.ts';
 import { getBlob, putBlob, sha256Hex, sync } from './store.ts';
+import { peek, verifyAccess } from './access.ts';
 
 // Cloudflare Worker. Static files come from the ASSETS binding (dist/);
 // only /api/* reaches this code (see run_worker_first in wrangler.jsonc).
@@ -12,6 +13,10 @@ type Env = {
   PHOTOS: D1Database;
   /** Local development only (.dev.vars): identity when there is no Cloudflare Access. */
   DEV_USER?: string;
+  /** Cloudflare Access team URL (https://<team>.cloudflareaccess.com) and application AUD tag(s), comma separated.
+   *  When both are set, every API request needs a valid, signed Access token. */
+  ACCESS_TEAM?: string;
+  ACCESS_AUD?: string;
 };
 type Vars = { user: string };
 
@@ -29,6 +34,16 @@ app.use('*', async (c, next) => {
  * ctx.access. The header is set by Access for hostname-based applications.
  */
 async function identify(c: { executionCtx: unknown; req: { header(n: string): string | undefined }; env: Env }) {
+  if (c.env.DEV_USER) return { email: c.env.DEV_USER, source: 'dev' as const };
+  if (c.env.ACCESS_TEAM && c.env.ACCESS_AUD) {
+    // Strict mode: the identity is whatever the signed Access token says, nothing else.
+    const cfg = { team: c.env.ACCESS_TEAM.replace(/\/$/, ''), aud: c.env.ACCESS_AUD.split(',').map(a => a.trim()).filter(Boolean) };
+    const email = await verifyAccess(c.req.header('Cf-Access-Jwt-Assertion'), cfg).catch(e => {
+      console.error('access verify', e);
+      return null;
+    });
+    return email ? { email, source: 'jwt' as const } : null;
+  }
   try {
     const access = (c.executionCtx as unknown as { access?: { getIdentity(): Promise<{ email?: string } | undefined> } }).access;
     const email = (await access?.getIdentity())?.email;
@@ -38,7 +53,6 @@ async function identify(c: { executionCtx: unknown; req: { header(n: string): st
   }
   const header = c.req.header('Cf-Access-Authenticated-User-Email');
   if (header) return { email: header, source: 'header' as const };
-  if (c.env.DEV_USER) return { email: c.env.DEV_USER, source: 'dev' as const };
   return null;
 }
 
@@ -46,7 +60,9 @@ app.get('/health', c => c.json({ app: 'racknotes', ok: true }));
 
 app.get('/me', async c => {
   const who = await identify(c);
-  return c.json({ email: who?.email ?? null, source: who?.source ?? null });
+  // Which Access application signed the request (not secret); used to configure strict mode.
+  const t = peek(c.req.header('Cf-Access-Jwt-Assertion') ?? '');
+  return c.json({ email: who?.email ?? null, source: who?.source ?? null, access: t ? { iss: t.iss, aud: t.aud } : null, strict: !!(c.env.ACCESS_TEAM && c.env.ACCESS_AUD) });
 });
 
 // Everything below requires a known user.
@@ -67,11 +83,20 @@ app.post('/sync', async c => {
   if (!Number.isInteger(body?.cursor) || body.cursor < 0 || !Array.isArray(body.changes))
     return c.json({ error: 'Невалидна заявка.' }, 400);
   if (body.changes.length > MAX_CHANGES_PER_REQUEST) return c.json({ error: 'Твърде много промени наведнъж.' }, 413);
+  // An invalid record is reported back on its own; it must not hold up the others.
+  const valid: Change[] = [];
+  const invalid: SyncResponse['rejected'] = [];
   for (const ch of body.changes) {
     const err = validateChange(ch);
-    if (err) return c.json({ error: err, id: (ch as { id?: unknown })?.id ?? null }, 400);
+    if (!err) valid.push(ch);
+    else {
+      const x = ch as { table?: unknown; id?: unknown };
+      invalid.push({ table: String(x?.table ?? '') as SyncTable, id: String(x?.id ?? ''), reason: err });
+    }
   }
-  return c.json(await sync(c.env.DB, c.env.PHOTOS, c.get('user'), body.cursor, body.changes));
+  const res = await sync(c.env.DB, c.env.PHOTOS, c.get('user'), body.cursor, valid);
+  res.rejected.push(...invalid);
+  return c.json(res);
 });
 
 app.put('/blobs/:hash{[0-9a-f]{64}}', async c => {

@@ -88,3 +88,35 @@ describe('buildImport', () => {
     expect(again.devices.map(d => [d.id, d.createdAt])).toEqual(plan.devices.map(d => [d.id, d.createdAt]));
   });
 });
+
+describe('refresh from NetBox', () => {
+  it('keeps field work and takes NetBox changes where nothing was changed locally', async () => {
+    const { mergeImport } = await import('../src/core/netbox.ts');
+    const { baseline } = await import('../src/core/verify.ts');
+    const base = {
+      id: 'nb-device-1', surveyId: 'nb-site-1', rackId: 'nb-rack-1', name: 'sw1', manufacturer: 'Cisco', model: 'C9300',
+      role: 'switch', uHeight: 1, position: 10, face: 'front' as const, fullDepth: true, serial: 'A', assetTag: '', mgmtIp: '10.0.0.1',
+      status: 'confirmed' as const, notes: '', createdAt: 't0', updatedAt: 't0', netboxId: 1
+    };
+    const local = { ...base, nb: baseline(base), serial: 'FIELD', verify: 'ok' as const, version: 3 };
+    const incoming = { ...base, mgmtIp: '10.0.0.2', serial: 'B', createdAt: 't1', updatedAt: 't1' };
+    const room = { id: 'r', surveyId: 'nb-site-1', floorId: 'f', name: 'Old', createdAt: '', updatedAt: '', widthM: 6, depthM: 4, items: [] };
+    const rack = { id: 'nb-rack-1', surveyId: 'nb-site-1', roomId: 'r', name: 'R1', uHeight: 42, notes: 'n', createdAt: '', updatedAt: '', plan: { x: 1, y: 1, facing: 'down' as const } };
+    const survey = { id: 'nb-site-1', tenant: 'T', site: 'S', building: 'B', status: 'review' as const, author: 'a', notes: 'keep', createdAt: '', updatedAt: '', verify: { startedAt: 'x' } };
+    const plan = {
+      survey: { ...survey, notes: '', status: 'imported' as const, verify: undefined, site: 'S2' },
+      floors: [], rooms: [{ ...room, name: 'New', widthM: undefined, depthM: undefined, items: undefined }],
+      racks: [{ ...rack, uHeight: 48, plan: undefined, notes: '' }], devices: [incoming], cables: [], warnings: [], skipped: { cables: 0, devices: 0 }
+    };
+    const m = mergeImport(plan as never, {
+      surveys: new Map([[survey.id, survey]]), floors: new Map(), rooms: new Map([[room.id, room]]),
+      racks: new Map([[rack.id, rack]]), devices: new Map([[local.id, local]])
+    } as never);
+    expect(m.survey).toMatchObject({ site: 'S2', notes: 'keep', status: 'review', verify: { startedAt: 'x' } });
+    expect(m.rooms[0]).toMatchObject({ name: 'New', widthM: 6, depthM: 4 });
+    expect(m.racks[0]).toMatchObject({ uHeight: 48, notes: 'n', plan: { x: 1 } });
+    const d = m.devices[0];
+    expect(d).toMatchObject({ serial: 'FIELD', mgmtIp: '10.0.0.2', verify: 'ok', createdAt: 't0' });
+    expect(d.nb).toMatchObject({ serial: 'B', mgmtIp: '10.0.0.2' });
+  });
+});

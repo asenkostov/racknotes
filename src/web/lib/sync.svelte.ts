@@ -64,7 +64,16 @@ async function uploadPhotos(entries: OutboxEntry[]) {
       await db.photos.update(p.id, { hash: p.hash, mime: p.mime });
     }
     const res = await api('/blobs/' + p.hash, { method: 'PUT', headers: { 'Content-Type': p.mime || 'image/jpeg' }, body: p.blob });
-    if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? 'Снимката не можа да се качи.');
+    if (!res.ok) {
+      const msg = ((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? 'Снимката не можа да се качи.';
+      // A photo the server will never take (too big, wrong type) must not block everything else;
+      // server errors and the like are retried with the whole sync.
+      if (res.status >= 400 && res.status < 500) {
+        sync.error = msg;
+        continue;
+      }
+      throw new Error(msg);
+    }
     await db.photos.update(p.id, { uploaded: true });
   }
 }
