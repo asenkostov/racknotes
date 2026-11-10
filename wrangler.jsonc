@@ -15,6 +15,10 @@
     { "binding": "PHOTOS", "database_name": "racknotes-photos-eu", "database_id": "c143bd3c-d8f8-41f5-8e20-b390ae73a904" }
   ],
   "previews": {
+    "vars": {
+      "ACCESS_TEAM": "https://square-fog-80c9.cloudflareaccess.com",
+      "ACCESS_AUD": "56c7684e9662521c7661903e0821100fe1f9bcda70afa6bc9ed0a29bec5615ae"
+    },
     "d1_databases": [
       { "binding": "DB", "database_name": "racknotes-preview", "database_id": "ddaddf51-a195-4ded-beae-22159bd81a7a" },
       { "binding": "PHOTOS", "database_name": "racknotes-photos-preview", "database_id": "a9dc37d0-3bc2-4235-bff4-358538f6261c" }
@@ -25,6 +29,12 @@
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
+  },
+  // Cloudflare Access: every API request must carry a valid token signed for this application.
+  // Team URL and AUD tag are public identifiers, not secrets.
+  "vars": {
+    "ACCESS_TEAM": "https://square-fog-80c9.cloudflareaccess.com",
+    "ACCESS_AUD": "56c7684e9662521c7661903e0821100fe1f9bcda70afa6bc9ed0a29bec5615ae"
   },
   "observability": { "enabled": true }
 }
