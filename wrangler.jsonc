@@ -26,5 +26,11 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   },
+  // Cloudflare Access: every API request must carry a valid token signed for this application.
+  // Team URL and AUD tag are public identifiers, not secrets.
+  "vars": {
+    "ACCESS_TEAM": "https://square-fog-80c9.cloudflareaccess.com",
+    "ACCESS_AUD": "56c7684e9662521c7661903e0821100fe1f9bcda70afa6bc9ed0a29bec5615ae"
+  },
   "observability": { "enabled": true }
 }
