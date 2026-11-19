@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Face } from '../../core/model.ts';
-  import { usedUnits } from '../../core/rack.ts';
+  import type { Device, Face } from '../../core/model.ts';
+  import { placementError, uLabel, usedUnits } from '../../core/rack.ts';
   import { db, deleteRack, save } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
@@ -44,6 +44,59 @@
   const rack = $derived(data.value?.rack);
   const devices = $derived(data.value?.devices ?? []);
   const verifying = $derived(!!data.value?.survey?.verify);
+
+  // --- move mode: pick a device, then ↑/↓ or tap free space ---
+  let moveMode = $state(false);
+  let movingId = $state('');
+  const moving = $derived(devices.find(d => d.id === movingId));
+  const placedDevs = $derived(devices.filter(d => !d.parentId));
+  function startMove() {
+    moveMode = true;
+    movingId = '';
+  }
+  function stopMove() {
+    moveMode = false;
+    movingId = '';
+  }
+  function pickDev(d: Device) {
+    if (d.parentId) return toast('Устройството е вътре в друго — премести него.');
+    movingId = movingId === d.id ? '' : d.id;
+  }
+  /** Try a new spot; returns true when saved. */
+  async function moveTo(d: Device, position: number, f: Face = d.face): Promise<boolean> {
+    if (!rack) return false;
+    const err = placementError(rack.uHeight, placedDevs, { ...d, position, face: f });
+    if (err) {
+      toast(err);
+      return false;
+    }
+    await save('devices', $state.snapshot({ ...d, position, face: f }));
+    return true;
+  }
+  async function step(delta: number) {
+    if (!moving || !moving.position) return;
+    await moveTo(moving, moving.position + delta);
+  }
+  async function flip() {
+    if (!moving) return;
+    await moveTo(moving, moving.position, moving.face === 'front' ? 'rear' : 'front');
+  }
+  async function unplace() {
+    if (moving) await moveTo(moving, 0);
+  }
+  /** Tapped free space: the nearest position that covers it, aligned to its top when possible. */
+  async function target(f: Face, top: number, bottom: number, at = top) {
+    const d = moving;
+    if (!d || !rack) return;
+    const h = Math.max(1, d.uHeight);
+    const face = d.fullDepth !== false ? d.face : f;
+    // Positions (lowest U) that cover the tapped U, nearest first: its top at the tapped U, then shifted.
+    const tries: number[] = [];
+    for (let k = 0; k < h + (top - bottom) + 1; k++) for (const p of [at - h + 1 + k, at - h + 1 - k]) if (!tries.includes(p)) tries.push(p);
+    const ok = tries.find(p => p >= 1 && p <= top && p + h - 1 >= bottom && !placementError(rack.uHeight, placedDevs, { ...d, position: p, face }));
+    if (ok === undefined) return toast(`Не се побира: устройството е ${h}U.`);
+    await moveTo(d, ok, face);
+  }
   const vsum = $derived(summary(devices));
   const next = $derived(verifying ? nextPending(devices) : undefined);
   const withImages = $derived(devices.filter(d => d.catalog?.front || d.catalog?.rear).length);
@@ -113,10 +166,32 @@
       {#each legend as [role, bg]}<span><i style="background: {bg}"></i>{role}</span>{/each}
       <span><i style="box-shadow: inset 0 0 0 2px var(--accent)"></i>За проверка</span>
       <span><i style="background: repeating-linear-gradient(45deg, #c9d2cf 0 2px, #fff 2px 4px); border: 1px solid #8a979c"></i>Монтирано от другата страна</span>
+      <button class="btn small" style="margin-left: auto; height: 32px" class:dark={moveMode} aria-pressed={moveMode} onclick={() => (moveMode ? stopMove() : startMove())}>{moveMode ? 'Готово' : '↕ Премести'}</button>
       {#if withImages}
-        <button class="btn small" style="margin-left: auto; height: 32px" aria-pressed={images} onclick={toggleImages}>{images ? 'Цветове' : 'Изгледи'}</button>
+        <button class="btn small" style="height: 32px" aria-pressed={images} onclick={toggleImages}>{images ? 'Цветове' : 'Изгледи'}</button>
       {/if}
     </div>
+
+    {#if moveMode}
+      <div class="card movebar">
+        {#if moving}
+          <div style="display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap">
+            <b>{moving.name || moving.model}</b>
+            <span class="muted mono">{moving.position ? uLabel(moving.position + moving.uHeight - 1, moving.position) : 'без U'} · {moving.face === 'front' ? 'лице' : 'гръб'}</span>
+          </div>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <button class="btn small" aria-label="Една U нагоре" onclick={() => step(1)} disabled={!moving.position}>↑ 1U</button>
+            <button class="btn small" aria-label="Една U надолу" onclick={() => step(-1)} disabled={!moving.position}>↓ 1U</button>
+            <button class="btn small" onclick={flip} disabled={!moving.position}>⇄ {moving.face === 'front' ? 'на гърба' : 'на лицето'}</button>
+            <button class="btn small" onclick={unplace} disabled={!moving.position}>Без U</button>
+            <button class="btn small" onclick={() => (movingId = '')}>Друго</button>
+          </div>
+          <span class="muted" style="font-size: 13px">Или докосни свободно място, за да го сложиш там.</span>
+        {:else}
+          <span>Докосни устройството, което да преместиш. Рафт или шаси се мести заедно с това, което е в него.</span>
+        {/if}
+      </div>
+    {/if}
 
     {#if verifying && vsum.total + vsum.new}
       <div class="card vbar">
@@ -132,10 +207,10 @@
 
     <div style="display: flex; gap: 28px; flex-wrap: wrap; align-items: flex-start">
       {#if wide}
-        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} {images} {verifying} label="Лице" />
-        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} {images} {verifying} label="Гръб" />
+        <RackElevation {rack} {devices} face="front" uPx={17} {childCount} {images} {verifying} label="Лице" moving={movingId} onpick={moveMode ? pickDev : undefined} ontarget={target} />
+        <RackElevation {rack} {devices} face="rear" uPx={17} {childCount} {images} {verifying} label="Гръб" moving={movingId} onpick={moveMode ? pickDev : undefined} ontarget={target} />
       {:else}
-        <RackElevation {rack} {devices} {face} uPx={20} {childCount} {images} {verifying} />
+        <RackElevation {rack} {devices} {face} uPx={20} {childCount} {images} {verifying} moving={movingId} onpick={moveMode ? pickDev : undefined} ontarget={target} />
       {/if}
     </div>
 
@@ -146,7 +221,7 @@
     {#if unracked.length}
       <div class="list">
         {#each unracked as d (d.id)}
-          <a href={'#/d/' + d.id}>
+          <svelte:element this={moveMode ? 'button' : 'a'} href={moveMode ? undefined : '#/d/' + d.id} type={moveMode ? 'button' : undefined} role={moveMode ? 'button' : 'link'} onclick={moveMode ? () => pickDev(d) : undefined} class:picked={movingId === d.id} class="unr">
             <span><b>{d.name || d.model || 'без име'}</b><br /><span class="muted">{d.manufacturer} {d.model}</span></span>
             {#if verifying}
               {@const st = verifyState(d)}
@@ -154,7 +229,7 @@
             {:else}
               <span class="tag {d.status}">{d.status === 'check' ? 'За проверка' : 'Потвърдено'}</span>
             {/if}
-          </a>
+          </svelte:element>
         {/each}
       </div>
     {/if}
@@ -182,5 +257,9 @@
 {/if}
 
 <style>
+  .movebar { gap: 8px; position: sticky; top: 8px; z-index: 5; border: 2px solid #f08a4b; }
+  button.unr { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line-2); font: inherit; text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .unr.picked { outline: 3px solid #f08a4b; outline-offset: -3px; }
+
   .vbar { gap: 8px; }
 </style>
