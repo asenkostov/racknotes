@@ -17,8 +17,29 @@
     childCount = new Map<string, number>(),
     label = '',
     images = true,
-    verifying = false
-  }: { rack: Rack; devices: Device[]; face: Face; uPx?: number; childCount?: Map<string, number>; label?: string; images?: boolean; verifying?: boolean } = $props();
+    verifying = false,
+    moving = null,
+    onpick,
+    ontarget
+  }: {
+    rack: Rack;
+    devices: Device[];
+    face: Face;
+    uPx?: number;
+    childCount?: Map<string, number>;
+    label?: string;
+    images?: boolean;
+    verifying?: boolean;
+    /** Move mode: the device being moved (highlighted). */
+    moving?: string | null;
+    /** Move mode on: tapping a device picks it instead of opening it. */
+    onpick?: (d: Device) => void;
+    /** Move mode, device picked: tapping free space moves it there. */
+    ontarget?: (face: Face, top: number, bottom: number, at: number) => void;
+  } = $props();
+  /** Trays and shelves: up to this many devices inside are drawn side by side. */
+  const MAX_CELLS = 4;
+  const kidsOf = (id: string) => devices.filter(c => c.parentId === id).sort((a, b) => a.name.localeCompare(b.name));
   /** Chassis state also reflects its children: anything pending inside keeps it pending. */
   const stateOf = (d: Device) => {
     const own = verifyState(d);
@@ -51,7 +72,19 @@
     </div>
     <div class="elev-rack" style="height: {rack.uHeight * uPx}px; background-size: 100% {uPx}px">
       {#each segs as s (s.kind + s.top)}
-        {#if s.kind === 'free'}
+        {#if s.kind === 'free' && onpick}
+          <button
+            type="button"
+            class="elev-free"
+            class:target={!!moving}
+            style="top: {top(s.top)}px; height: {height(s.top, s.bottom) - 1}px"
+            disabled={!moving}
+            onclick={e => ontarget?.(face, s.top, s.bottom, Math.min(s.top, Math.max(s.bottom, s.top - Math.floor((e.offsetY || 0) / uPx))))}
+            aria-label={`Премести в ${uLabel(s.top, s.bottom)}`}
+          >
+            <span>{moving ? 'премести тук' : ''}</span>
+          </button>
+        {:else if s.kind === 'free'}
           <a
             class="elev-free"
             style="top: {top(s.top)}px; height: {height(s.top, s.bottom) - 1}px"
@@ -67,23 +100,47 @@
           {@const n = childCount.get(d.id)}
           {@const img = imageOf(d)}
           {@const vs = verifying ? stateOf(d) : null}
-          <a
+          {@const kids = kidsOf(d.id)}
+          {@const cells = !other && kids.length > 0 && kids.length <= MAX_CELLS}
+          <svelte:element
+            this={onpick ? 'button' : cells ? 'div' : 'a'}
+            type={onpick ? 'button' : undefined}
+            role={onpick ? undefined : cells ? 'group' : undefined}
+            onclick={onpick ? () => onpick(d) : undefined}
             class="elev-dev"
             class:img={!!img}
             class:other={other && !img}
             class:check={!verifying && d.status === 'check'}
             class:missing={vs === 'missing'}
+            class:moving={moving === d.id}
+            class:tray={cells}
             style={other ? `top: ${top(s.top)}px; height: ${height(s.top, s.bottom) - 1}px` : `top: ${top(s.top)}px; height: ${height(s.top, s.bottom) - 1}px; background: ${c.bg}; color: ${c.fg}`}
-            href={'#/d/' + d.id}
+            href={onpick || cells ? undefined : '#/d/' + d.id}
             title={`${uLabel(s.top, s.bottom)} · ${d.name || d.model} · ${d.manufacturer} ${d.model}${d.role ? ' · ' + d.role : ''}`}
           >
             {#if img}
               <img src={imgUrl(img)} alt="" loading="lazy" onerror={() => (broken = new Set([...broken, img]))} />
             {/if}
-            <span class="elev-name">{d.name || d.model || 'без име'}</span>
-            {#if vs}<span class="vbadge v-{vs}" title={STATE_LABELS[vs]}>{STATE_SYMBOLS[vs]}</span>{/if}
-            <span class="elev-meta">{other ? 'отзад' : d.status === 'check' ? 'провери' : n ? `+${n} вътре` : ''}</span>
-          </a>
+            {#if cells}
+              <!-- A tray or shelf: its own name, then what sits on it, side by side. -->
+              <svelte:element this={onpick ? 'span' : 'a'} class="tray-name" href={onpick ? undefined : '#/d/' + d.id}>{d.name || d.model || 'рафт'}</svelte:element>
+              <span class="tray-cells">
+                {#each kids as k (k.id)}
+                  {@const kc = roleColors(k.role, k.roleColor)}
+                  {@const ks = verifying ? verifyState(k) : null}
+                  <svelte:element this={onpick ? 'span' : 'a'} class="tray-cell" href={onpick ? undefined : '#/d/' + k.id} style="background: {kc.bg}; color: {kc.fg}" title={`${k.name || k.model} · ${k.manufacturer} ${k.model}`}>
+                    <span class="elev-name">{k.name || k.model || 'без име'}</span>
+                    {#if ks}<span class="vbadge v-{ks}">{STATE_SYMBOLS[ks]}</span>{/if}
+                  </svelte:element>
+                {/each}
+              </span>
+              {#if vs}<span class="vbadge v-{vs}" title={STATE_LABELS[vs]}>{STATE_SYMBOLS[vs]}</span>{/if}
+            {:else}
+              <span class="elev-name">{d.name || d.model || 'без име'}</span>
+              {#if vs}<span class="vbadge v-{vs}" title={STATE_LABELS[vs]}>{STATE_SYMBOLS[vs]}</span>{/if}
+              <span class="elev-meta">{other ? 'отзад' : d.status === 'check' ? 'провери' : n ? `+${n} вътре` : ''}</span>
+            {/if}
+          </svelte:element>
         {/if}
       {/each}
     </div>
@@ -121,6 +178,16 @@
   .vbadge.v-changed { background: #1d4ed8; }
   .vbadge.v-missing { background: #b91c1c; }
   .vbadge.v-new { background: #7c3aed; }
+  .elev-dev.tray { padding: 0 2px 0 6px; gap: 4px; }
+  .tray-name { flex: 0 1 auto; max-width: 32%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; text-decoration: none; font-size: 11px; opacity: 0.85; }
+  .tray-cells { flex: 1; display: flex; gap: 2px; height: calc(100% - 4px); min-width: 0; }
+  .tray-cell { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 2px; text-decoration: none; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18); }
+  .tray-cell .vbadge { width: 15px; height: 15px; font-size: 10px; }
+  button.elev-dev, button.elev-free { border: 0; font: inherit; text-align: left; cursor: pointer; }
+  .elev-free.target { background: #eef6ff; outline: 1px dashed #2563eb; outline-offset: -2px; color: #1d4ed8; }
+  .elev-free.target span { opacity: 1; }
+  .elev-free:disabled { cursor: default; background: transparent; }
+  .elev-dev.moving { outline: 3px solid #f08a4b; outline-offset: -1px; z-index: 2; }
   .elev-dev.missing { opacity: 0.55; text-decoration: line-through; }
   .elev-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
   .elev-meta { font-size: 10px; opacity: 0.85; white-space: nowrap; }

@@ -28,12 +28,13 @@
       const rackId = existing?.rackId ?? key;
       const rack = await db.racks.get(rackId);
       if (!rack) return null;
-      const [others, all, survey] = await Promise.all([
+      const [others, all, survey, racks] = await Promise.all([
         db.devices.where('rackId').equals(rackId).toArray(),
         db.devices.toArray(),
-        db.surveys.get(rack.surveyId)
+        db.surveys.get(rack.surveyId),
+        db.racks.where('surveyId').equals(rack.surveyId).sortBy('name')
       ]);
-      return { existing, rack, others, all, survey };
+      return { existing, rack, others, all, survey, racks };
     }
   );
 
@@ -46,7 +47,9 @@
       return;
     }
     const top = Number(params.get('top') ?? 0);
-    const face = (params.get('face') === 'rear' ? 'rear' : 'front') as Face;
+    // Adding a device inside a tray / shelf / chassis.
+    const parent = c.others.find(d => d.id === params.get('parent') && !d.parentId);
+    const face = (parent ? parent.face : params.get('face') === 'rear' ? 'rear' : 'front') as Face;
     form = {
       ...meta(),
       surveyId: c.rack.surveyId,
@@ -56,8 +59,9 @@
       model: '',
       role: '',
       uHeight: 1,
-      position: top > 0 ? top : 0,
+      position: parent ? 0 : top > 0 ? top : 0,
       face,
+      ...(parent ? { parentId: parent.id } : {}),
       fullDepth: true,
       serial: '',
       assetTag: '',
@@ -127,6 +131,27 @@
     }
   });
 
+  // --- where it sits: rack, or inside another device (tray, shelf, chassis) ---
+  const hasKids = () => !!related.value?.children.length;
+  const hosts = $derived(others.filter(d => !d.parentId));
+  function setParent(v: string) {
+    if (!form) return;
+    if (v) {
+      const p = hosts.find(h => h.id === v);
+      form.parentId = v;
+      form.position = 0;
+      if (p) form.face = p.face;
+    } else delete form.parentId;
+  }
+  function setRack(v: string) {
+    if (!form || v === form.rackId) return;
+    form.rackId = v;
+    // The new rack's free spots are chosen there, with "↕ Премести".
+    form.position = 0;
+    delete form.parentId;
+  }
+  const movedRack = $derived(!!form && !!ctx.value && form.rackId !== ctx.value.rack.id);
+
   // --- verification against NetBox ---
   const verifying = $derived(!!ctx.value?.survey?.verify);
   const checkable = $derived(verifying && !!form?.netboxId);
@@ -167,9 +192,13 @@
       if (t) d.catalog = ref(t);
     }
     if (d.mgmtIp && !/^[0-9a-fA-F:.]+$/.test(d.mgmtIp)) return (error = 'IP адресът изглежда невалиден (без маска).');
-    const err = placementError(ctx.value.rack.uHeight, others, d);
+    if (d.parentId) d.position = 0;
+    const err = movedRack ? null : placementError(ctx.value.rack.uHeight, others, d);
     if (err) return (error = err);
     await save('devices', d);
+    // Moving a tray or chassis to another rack takes what is inside with it.
+    if (movedRack && related.value?.children.length)
+      await saveMany([{ table: 'devices', rows: $state.snapshot(related.value.children).map(c => ({ ...c, rackId: d.rackId })) }]);
     saved = true;
     if (mark !== undefined && checkable) {
       toast(mark === 'missing' ? 'Отбелязано като липсващо.' : diff(d).length ? 'Разликите са записани.' : 'Съвпада ✓');
@@ -325,6 +354,22 @@
         </div>
         <div class="field"><label for="uh">Височина (U)</label><input id="uh" type="number" min="1" max="60" bind:value={form.uHeight} /></div>
         <div class="field">
+          <label for="rk">Шкаф</label>
+          <select id="rk" value={form.rackId} onchange={e => setRack((e.target as HTMLSelectElement).value)}>
+            {#each ctx.value.racks as r (r.id)}<option value={r.id}>{r.name}</option>{/each}
+          </select>
+        </div>
+        <div class="field">
+          <label for="pa">Вътре в</label>
+          <select id="pa" value={form.parentId ?? ''} disabled={hasKids() || movedRack} onchange={e => setParent((e.target as HTMLSelectElement).value)}>
+            <option value="">— направо в шкафа</option>
+            {#each hosts as h (h.id)}<option value={h.id}>{h.name || h.model}{h.position ? ' · U' + h.position : ''}</option>{/each}
+          </select>
+        </div>
+        {#if movedRack}<p class="muted" style="grid-column: 1 / -1; margin: 0; font-size: 13px">Отива в {ctx.value.racks.find(r => r.id === form!.rackId)?.name} без U позиция — после го сложи на място с „↕ Премести“.{hasKids() ? ' Това, което е вътре, отива с него.' : ''}</p>{/if}
+        {#if form.parentId}<p class="muted" style="grid-column: 1 / -1; margin: 0; font-size: 13px">Стои на/в {hosts.find(h => h.id === form!.parentId)?.name || 'друго устройство'} — няма собствена U позиция.</p>{/if}
+        {#if !form.parentId && !movedRack}
+        <div class="field">
           <label for="ps">Позиция</label>
           <select id="ps" bind:value={form.position}>
             <option value={0}>Без U (0U / рафт)</option>
@@ -339,6 +384,7 @@
           <label for="fd">Дълбочина</label>
           <select id="fd" bind:value={form.fullDepth}><option value={true}>Пълна (заема и двете страни)</option><option value={false}>Половин</option></select>
         </div>
+        {/if}
       </div>
 
       <div class="field">
@@ -365,9 +411,16 @@
       {#if related.value?.parent}
         <p class="muted" style="margin: 0">Монтирано в <a href={'#/d/' + related.value.parent.id}>{related.value.parent.name}</a></p>
       {/if}
+      {#if !form.parentId && !isNew && !related.value?.children.length}
+        <div class="field">
+          <span style="font-size: 13px; font-weight: 600; color: var(--muted)">Вътре</span>
+          <p class="muted" style="margin: 0; font-size: 14px">Тава, рафт или шаси: добави устройствата, които стоят на/в него — например два малки суича в 1U или няколко NAS на тава.</p>
+          <a class="btn small" style="align-self: flex-start; text-decoration: none" href={`#/d/new?rack=${form.rackId}&parent=${form.id}`}><Icon name="plus" size={16} /> Добави вътре</a>
+        </div>
+      {/if}
       {#if related.value?.children.length}
         <div class="field">
-          <span style="font-size: 13px; font-weight: 600; color: var(--muted)">В шасито ({related.value.children.length})</span>
+          <span style="font-size: 13px; font-weight: 600; color: var(--muted)">Вътре ({related.value.children.length}) <a class="btn small" style="margin-left: 8px; text-decoration: none" href={`#/d/new?rack=${form.rackId}&parent=${form.id}`}><Icon name="plus" size={14} /> Добави</a></span>
           <div class="list">
             {#each related.value.children as ch (ch.id)}
               {@const cs = verifying ? verifyState(ch) : null}
@@ -376,7 +429,7 @@
             {/each}
           </div>
           {#if verifying && related.value.children.some(c => verifyState(c) === 'pending')}
-            <button type="button" class="btn small" style="align-self: flex-start" onclick={confirmChildren}>✓ Всички в шасито съвпадат</button>
+            <button type="button" class="btn small" style="align-self: flex-start" onclick={confirmChildren}>✓ Всички вътре съвпадат</button>
           {/if}
         </div>
       {/if}
