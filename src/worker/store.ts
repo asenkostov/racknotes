@@ -110,7 +110,8 @@ export async function sync(
   if (accepted.length) {
     const now = new Date().toISOString();
     // Insert, or update only if the client's base version is still current.
-    // A deleted record may always be brought back (restore from a file).
+    // A deleted record comes back only on an explicit restore from a file; an ordinary
+    // edit from a device that missed the delete is a conflict the user decides on.
     // seq = MAX(seq)+1 is safe: a D1 batch runs as one serialized transaction.
     const stmt = db.prepare(
       `INSERT INTO records (tbl, id, survey_id, data, version, deleted, seq, updated_at, updated_by)
@@ -119,13 +120,13 @@ export async function sync(
          survey_id = excluded.survey_id, data = excluded.data, deleted = excluded.deleted,
          version = records.version + 1, seq = excluded.seq,
          updated_at = excluded.updated_at, updated_by = excluded.updated_by
-       WHERE records.version = ?8 OR (records.deleted = 1 AND excluded.deleted = 0)
+       WHERE records.version = ?8 OR (records.deleted = 1 AND excluded.deleted = 0 AND ?9 = 1)
        RETURNING version`
     );
     const results = await db.batch<{ version: number }>(
       accepted.map(c => {
         const surveyId = c.table === 'surveys' ? c.id : String(c.data?.surveyId ?? '');
-        return stmt.bind(c.table, c.id, surveyId || null, c.deleted ? '{}' : JSON.stringify(c.data), c.deleted ? 1 : 0, now, user, c.baseVersion);
+        return stmt.bind(c.table, c.id, surveyId || null, c.deleted ? '{}' : JSON.stringify(c.data), c.deleted ? 1 : 0, now, user, c.baseVersion, c.restore ? 1 : 0);
       })
     );
     const lost: Change[] = [];

@@ -52,3 +52,24 @@ describe('server store: deleting photos', () => {
     expect(await getBlob(photos, a.hash)).not.toBeNull();
   });
 });
+
+describe('server store: deleted records', () => {
+  const rack = (baseVersion: number, extra: Partial<Change> = {}): Change => ({ table: 'racks', id: 'r1', baseVersion, deleted: false, data: { id: 'r1', surveyId: 's1', name: 'R1' }, ...extra });
+  it('an edit from a device that missed the delete is a conflict, not a silent comeback', async () => {
+    const db = fakeD1();
+    const photos = fakeD1();
+    await sync(db, photos, 'a@x', 0, [rack(0)]);
+    await sync(db, photos, 'a@x', 0, [{ table: 'racks', id: 'r1', baseVersion: 1, deleted: true, data: null }]);
+    const stale = await sync(db, photos, 'b@x', 0, [rack(1)]);
+    expect(stale.applied).toHaveLength(0);
+    expect(stale.conflicts.map(c => [c.id, c.deleted])).toEqual([['r1', true]]);
+  });
+  it('a restore from file may bring a deleted record back', async () => {
+    const db = fakeD1();
+    const photos = fakeD1();
+    await sync(db, photos, 'a@x', 0, [rack(0)]);
+    await sync(db, photos, 'a@x', 0, [{ table: 'racks', id: 'r1', baseVersion: 1, deleted: true, data: null }]);
+    const back = await sync(db, photos, 'a@x', 0, [rack(1, { restore: true })]);
+    expect(back.applied).toEqual([{ table: 'racks', id: 'r1', version: 3 }]);
+  });
+});

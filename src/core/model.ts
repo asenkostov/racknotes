@@ -109,6 +109,8 @@ export interface Rack extends Meta {
   plan?: { x: number; y: number; facing: Facing };
   /** Unset = not recorded yet. */
   doors?: { front?: RackDoor; rear?: RackDoor };
+  /** What NetBox said at import: the baseline for exporting changes. */
+  nb?: { name: string; roomId: Id; uHeight: number };
 }
 
 /** NetBox: Device. position 0 = not racked / 0U (vertical PDU etc.). */

@@ -279,6 +279,11 @@
       <button class="btn small dark" style="align-self: flex-start" onclick={prepareImages} disabled={!!imgBusy}>{imgBusy || 'Свържи моделите и свали изгледите'}</button>
     </div>
     <div class="card">
+      <h3 style="font-size: 15px">NetBox</h3>
+      <p class="muted" style="margin: 0">CSV файлове за Import в NetBox 4.1.11: нови помещения, шкафове и устройства, а при проверен обект — само разликите.</p>
+      <a class="btn small dark" style="align-self: flex-start; text-decoration: none" href={'#/s/' + survey.id + '/export'}>Експорт към NetBox</a>
+    </div>
+    <div class="card">
       <h3 style="font-size: 15px">Файл</h3>
       <p class="muted" style="margin: 0">Целият оглед със снимките в един файл. С него може да го възстановиш по-късно от „Внос“, на този или друг сайт.</p>
       <div style="display: flex; gap: 8px; flex-wrap: wrap">

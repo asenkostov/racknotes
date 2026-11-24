@@ -7,6 +7,7 @@
 // imports compare equal during sync.
 
 import { baseline } from './verify.ts';
+import { emptyKnown, type Known } from './export.ts';
 import type { Cable, CableEnd, Device, Floor, PortKind, Rack, Room, Survey } from './model.ts';
 import { placementError } from './rack.ts';
 
@@ -120,17 +121,22 @@ export function buildImport(files: NetboxFile[], opts: { author: string; now: st
     return r;
   };
 
-  const racks: Rack[] = racksJ.map(r => ({
-    id: `nb-rack-${r.id}`,
-    createdAt: r.created ?? survey.createdAt,
-    updatedAt: opts.now,
-    netboxId: r.id,
-    surveyId: sid,
-    roomId: roomFor(r.location).id,
-    name: r.name,
-    uHeight: Math.round(r.u_height ?? 42),
-    notes: text(r.description, r.comments)
-  }));
+  const racks: Rack[] = racksJ.map(r => {
+    const roomId = roomFor(r.location).id;
+    const uHeight = Math.round(r.u_height ?? 42);
+    return {
+      id: `nb-rack-${r.id}`,
+      createdAt: r.created ?? survey.createdAt,
+      updatedAt: opts.now,
+      netboxId: r.id,
+      surveyId: sid,
+      roomId,
+      name: r.name,
+      uHeight,
+      notes: text(r.description, r.comments),
+      nb: { name: r.name, roomId, uHeight }
+    };
+  });
   const rackById = new Map(racksJ.map(r => [r.id, `nb-rack-${r.id}`]));
 
   const types = new Map(typesJ.map(t => [t.id, t]));
@@ -246,7 +252,7 @@ const NETBOX_OWNED = {
   surveys: ['tenant', 'site', 'netboxId'],
   floors: ['netboxId'],
   rooms: ['name', 'floorId', 'netboxId'],
-  racks: ['name', 'uHeight', 'roomId', 'netboxId']
+  racks: ['name', 'uHeight', 'roomId', 'netboxId', 'nb']
 } as const;
 
 function overlay<T extends object>(existing: T | undefined, incoming: T, owned: readonly string[]): T {
@@ -290,4 +296,27 @@ export function mergeImport(plan: ImportPlan, existing: Existing): ImportPlan {
     racks: plan.racks.map(r => overlay(existing.racks.get(r.id), r, NETBOX_OWNED.racks)),
     devices: plan.devices.map(d => mergeDevice(existing.devices.get(d.id), d))
   };
+}
+
+/** Names of things that exist in NetBox, from the list files of an import — so the export leaves them out. */
+export function knownFromFiles(files: NetboxFile[], into: Known = emptyKnown()): Known {
+  const add = (list: string[], v: unknown) => {
+    const s = typeof v === 'string' ? v.trim() : '';
+    if (s && !list.some(x => x.toLowerCase() === s.toLowerCase())) list.push(s);
+  };
+  const k: Known = { ...into, tenants: [...into.tenants], sites: [...into.sites], locations: [...into.locations], manufacturers: [...into.manufacturers], roles: [...into.roles], deviceTypes: [...into.deviceTypes] };
+  for (const f of files)
+    for (const r of f.results) {
+      add(k.tenants, r.tenant?.name);
+      add(k.sites, r.site?.name);
+      if (r.site?.name && r.location?.name) add(k.locations, `${r.site.name}\u0000${r.location.name}`);
+      if (f.kind === 'locations' && r.site?.name) add(k.locations, `${r.site.name}\u0000${r.name}`);
+      add(k.roles, f.kind === 'device-roles' ? r.name : r.role?.name ?? r.device_role?.name);
+      const mf = f.kind === 'device-types' ? r.manufacturer?.name : r.device_type?.manufacturer?.name;
+      add(k.manufacturers, mf);
+      const model = f.kind === 'device-types' ? r.model : r.device_type?.model;
+      if (mf && model) add(k.deviceTypes, `${mf}\u0000${model}`);
+    }
+  k.at = new Date().toISOString();
+  return k;
 }
