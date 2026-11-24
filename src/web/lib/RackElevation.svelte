@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Device, Face, Rack } from '../../core/model.ts';
-  import { elevation, uLabel } from '../../core/rack.ts';
+  import { elevation, tappedU, uLabel } from '../../core/rack.ts';
+  import { go } from './router.svelte.ts';
   import { roleColors } from '../../core/roles.ts';
   import { imgUrl } from './catalog.svelte.ts';
   import { STATE_LABELS, STATE_SYMBOLS, verifyState } from '../../core/verify.ts';
@@ -79,7 +80,7 @@
             class:target={!!moving}
             style="top: {top(s.top)}px; height: {height(s.top, s.bottom) - 1}px"
             disabled={!moving}
-            onclick={e => ontarget?.(face, s.top, s.bottom, Math.min(s.top, Math.max(s.bottom, s.top - Math.floor((e.offsetY || 0) / uPx))))}
+            onclick={e => ontarget?.(face, s.top, s.bottom, tappedU(s.top, s.bottom, e.clientY - e.currentTarget.getBoundingClientRect().top, uPx))}
             aria-label={`Премести в ${uLabel(s.top, s.bottom)}`}
           >
             <span>{moving ? 'премести тук' : ''}</span>
@@ -89,6 +90,12 @@
             class="elev-free"
             style="top: {top(s.top)}px; height: {height(s.top, s.bottom) - 1}px"
             href={`#/d/new?rack=${rack.id}&top=${s.top}&bottom=${s.bottom}&face=${face}`}
+            onclick={e => {
+              // The new device starts at the U that was tapped, not at the top of the gap.
+              e.preventDefault();
+              const at = tappedU(s.top, s.bottom, e.clientY - e.currentTarget.getBoundingClientRect().top, uPx);
+              go(`/d/new?rack=${rack.id}&top=${e.detail === 0 ? s.top : at}&bottom=${s.bottom}&face=${face}`);
+            }}
             aria-label={`Добави устройство в ${uLabel(s.top, s.bottom)}`}
           >
             <span>+ {s.top - s.bottom + 1 > 1 ? `${s.top - s.bottom + 1}U свободни` : 'свободно'}</span>
@@ -192,7 +199,7 @@
   .elev-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; min-width: 0; }
   .elev-meta { font-size: 10px; opacity: 0.85; white-space: nowrap; }
   .elev-free { color: #8a979c; font-size: 11px; justify-content: center; }
-  .elev-free span { opacity: 0; transition: opacity 0.15s; }
+  .elev-free span { opacity: 0; transition: opacity 0.15s; pointer-events: none; }
   .elev-free:hover span, .elev-free:focus-visible span { opacity: 1; }
   .elev-free:hover { background: #f6f8f7; outline: 1px dashed #8a979c; outline-offset: -2px; }
   @media (hover: none) { .elev-free span { opacity: 0.8; } }

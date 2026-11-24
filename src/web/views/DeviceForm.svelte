@@ -195,10 +195,13 @@
     if (d.parentId) d.position = 0;
     const err = movedRack ? null : placementError(ctx.value.rack.uHeight, others, d);
     if (err) return (error = err);
-    await save('devices', d);
-    // Moving a tray or chassis to another rack takes what is inside with it.
-    if (movedRack && related.value?.children.length)
-      await saveMany([{ table: 'devices', rows: $state.snapshot(related.value.children).map(c => ({ ...c, rackId: d.rackId })) }]);
+    // Moving a tray or chassis to another rack takes what is inside with it — in one write,
+    // so a child can never be left behind pointing at a parent in another rack.
+    if (movedRack && related.value?.children.length) {
+      const t = now();
+      const kids = $state.snapshot(related.value.children).map(c => ({ ...c, rackId: d.rackId, updatedAt: t }));
+      await saveMany([{ table: 'devices', rows: [{ ...d, updatedAt: t }, ...kids] }]);
+    } else await save('devices', d);
     saved = true;
     if (mark !== undefined && checkable) {
       toast(mark === 'missing' ? 'Отбелязано като липсващо.' : diff(d).length ? 'Разликите са записани.' : 'Съвпада ✓');
@@ -223,6 +226,16 @@
     await deleteDevice(form.id);
     saved = true;
     go('/r/' + form.rackId);
+  }
+
+  // The rack the device is going to (it can be changed in the form).
+  const rackName = $derived(ctx.value?.racks.find(r => r.id === form?.rackId)?.name ?? ctx.value?.rack.name ?? '');
+
+  /** Closing a new, unsaved device with something typed in asks first: the field person may have tapped X by mistake. */
+  function confirmClose(e: MouseEvent) {
+    if (!isNew || saved || !form) return;
+    const typed = [form.name, form.model, form.manufacturer, form.serial, form.assetTag, form.mgmtIp, form.notes].some(v => String(v ?? '').trim());
+    if (typed && !confirm('Устройството не е записано. Да го изхвърля ли?')) e.preventDefault();
   }
 
   // A new device that was never saved should not leave orphan photos behind.
@@ -284,10 +297,10 @@
 
 <header class="topbar">
   <div class="row" style="justify-content: flex-start">
-    <a class="icon-btn" href={ctx.value ? '#/r/' + ctx.value.rack.id : '#/'} aria-label="Затвори" style="margin-left: -10px"><Icon name="close" /></a>
+    <a class="icon-btn" href={ctx.value ? '#/r/' + ctx.value.rack.id : '#/'} aria-label="Затвори" style="margin-left: -10px" onclick={confirmClose}><Icon name="close" /></a>
     <div>
       <div style="font-size: 18px; font-weight: 700">{isNew ? 'Ново устройство' : form?.name || form?.model || 'Устройство'}</div>
-      {#if ctx.value}<div class="sub">{ctx.value.rack.name}{form?.position ? ' · ' + uLabel(form.position + form.uHeight - 1, form.position) : ' · без U позиция'}</div>{/if}
+      {#if ctx.value}<div class="sub">{rackName}{form?.position ? ' · ' + uLabel(form.position + form.uHeight - 1, form.position) : ' · без U позиция'}</div>{/if}
     </div>
   </div>
 </header>

@@ -324,7 +324,7 @@
       const old = plan?.photoId;
       // A new drawing of the same size keeps the scale; otherwise it must be set again.
       const keep = plan?.mPerPx && plan.imgW === d.width && plan.imgH === d.height;
-      await saveFloor({ plan: { photoId: photo.id, imgW: d.width, imgH: d.height, source: f.name + (d.pages > 1 ? ` · стр. ${pg}` : ''), ...(keep ? { mPerPx: plan!.mPerPx } : {}) } });
+      await saveFloor({ plan: { photoId: photo.id, imgW: d.width, imgH: d.height, source: (drawingKind(f) === 'pdf' ? 'PDF' : 'чертеж') + (d.pages > 1 ? ` · стр. ${pg}` : '') /* never the file name: it often names the client or the address, and it syncs to every phone */, ...(keep ? { mPerPx: plan!.mPerPx } : {}) } });
       if (old) await deletePhoto(old);
       fitted = false;
       toast(keep ? 'Чертежът е сменен.' : 'Чертежът е качен. Сега задай мащаба.');

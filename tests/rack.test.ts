@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elevation, fittingPositions, placementError, usedUnits, type Placed } from '../src/core/rack.ts';
+import { elevation, fittingPositions, placementError, usedUnits, type Placed, nearestFit, tappedU } from '../src/core/rack.ts';
 
 const dev = (id: string, position: number, uHeight: number, face: 'front' | 'rear' = 'front', fullDepth?: boolean): Placed =>
   ({ id, position, uHeight, face, fullDepth });
@@ -55,5 +55,35 @@ describe('placement', () => {
 
   it('counts used units', () => {
     expect(usedUnits(42, [dev('a', 1, 4), dev('b', 10, 2), dev('c', 0, 1)])).toBe(6);
+  });
+});
+
+describe('moving by tapping free space', () => {
+  const rackH = 42;
+  const sw = { id: 'sw', position: 10, uHeight: 1, face: 'front' as const };
+  const srv = { id: 'srv', position: 20, uHeight: 2, face: 'front' as const };
+  const devs = [sw, srv];
+
+  it('finds the U under the finger anywhere in the gap, not only its top', () => {
+    // Gap U11–19 drawn 20px per U: a tap 80px below its top is U15.
+    expect(tappedU(19, 11, 80, 20)).toBe(15);
+    expect(tappedU(19, 11, 0, 20)).toBe(19);
+    expect(tappedU(19, 11, 500, 20)).toBe(11);
+    expect(tappedU(19, 11, -5, 20)).toBe(19);
+  });
+
+  it('puts a 1U device exactly where tapped', () => {
+    expect(nearestFit(rackH, devs, sw, 19, 11, 15)).toBe(15);
+  });
+
+  it('puts a 2U device with its top at the tapped U, shifted down when it would collide', () => {
+    expect(nearestFit(rackH, devs, { id: 'x', position: 0, uHeight: 2, face: 'front' }, 19, 11, 15)).toBe(14);
+    // Tapping U19 directly under srv (U20–21): top at U19 → position 18.
+    expect(nearestFit(rackH, devs, { id: 'x', position: 0, uHeight: 2, face: 'front' }, 19, 11, 19)).toBe(18);
+  });
+
+  it('says no when the device is taller than the gap', () => {
+    const low = { id: 'low', position: 6, uHeight: 1, face: 'front' as const }; // gap U7–9
+    expect(nearestFit(rackH, [...devs, low], { id: 'x', position: 0, uHeight: 4, face: 'front' }, 9, 7, 8)).toBeNull();
   });
 });

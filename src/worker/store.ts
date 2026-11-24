@@ -95,6 +95,18 @@ export async function sync(
     else accepted.push(c);
   }
 
+  // Blobs behind photos that are being deleted: remembered now, because a tombstone keeps no data.
+  const dropped = accepted.filter(c => c.table === 'photos' && c.deleted).map(c => c.id);
+  const droppedHashes = new Map<string, string>();
+  for (let i = 0; i < dropped.length; i += 50) {
+    const part = dropped.slice(i, i + 50);
+    const { results } = await db
+      .prepare(`SELECT id, json_extract(data, '$.hash') AS hash FROM records WHERE tbl = 'photos' AND deleted = 0 AND id IN (${part.map(() => '?').join(',')})`)
+      .bind(...part)
+      .all<{ id: string; hash: string | null }>();
+    results.forEach(r => r.hash && droppedHashes.set(r.id, r.hash));
+  }
+
   if (accepted.length) {
     const now = new Date().toISOString();
     // Insert, or update only if the client's base version is still current.
@@ -126,6 +138,11 @@ export async function sync(
       const row = await db.prepare('SELECT * FROM records WHERE tbl = ? AND id = ?').bind(c.table, c.id).first<Row>();
       if (row) res.conflicts.push(toRecord(row));
     }
+
+    // A deleted photo or drawing is really deleted: its blob goes too, unless another live photo uses the same file.
+    const applied = new Set(res.applied.filter(a => a.table === 'photos').map(a => a.id));
+    const gone = [...new Set([...droppedHashes].filter(([id]) => applied.has(id)).map(([, h]) => h))];
+    if (gone.length) await purgeBlobs(db, photos, gone);
   }
 
   const { results } = await db
@@ -144,6 +161,21 @@ export async function putBlob(photos: D1Database, hash: string, mime: string, by
     .prepare('INSERT OR IGNORE INTO blobs (hash, mime, size, data, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(hash, mime, bytes.byteLength, bytes, new Date().toISOString(), user)
     .run();
+}
+
+/** Delete the given blobs that no live photo record references any more. Returns how many were deleted. */
+export async function purgeBlobs(db: D1Database, photos: D1Database, hashes: string[]) {
+  let n = 0;
+  for (const h of hashes) {
+    const used = await db
+      .prepare(`SELECT 1 FROM records WHERE tbl = 'photos' AND deleted = 0 AND json_extract(data, '$.hash') = ? LIMIT 1`)
+      .bind(h)
+      .first();
+    if (used) continue;
+    const r = await photos.prepare('DELETE FROM blobs WHERE hash = ?').bind(h).run();
+    n += r.meta?.changes ?? 0;
+  }
+  return n;
 }
 
 export async function getBlob(photos: D1Database, hash: string) {
