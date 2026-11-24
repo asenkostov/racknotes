@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Conflict } from '../lib/db.ts';
+  import Dexie from 'dexie';
   import { db } from '../lib/db.ts';
   import { exportBackup, importBackup } from '../lib/backup.ts';
   import { live } from '../lib/live.svelte.ts';
@@ -66,6 +67,27 @@
       toast(`Възстановени ${await importBackup(file)} записа.`);
     } catch (err) {
       toast((err as Error).message);
+    }
+  }
+
+  /**
+   * Lost-phone hygiene: removes every survey, photo and drawing from this device, the cached app, and signs out.
+   * Changes not yet sent to the server would be lost, so that is asked separately.
+   */
+  async function wipeDevice() {
+    if (!confirm('Всички огледи, снимки и чертежи ще бъдат изтрити от ТОВА устройство и ще излезеш от профила. На сървъра нищо не се трие. Продължаваш ли?')) return;
+    if (sync.pending && !confirm(`${sync.pending} промени още НЕ са изпратени и ще се загубят. Изтегли архив или синхронизирай първо. Все пак да изтрия ли?`)) return;
+    try {
+      db.close();
+      await indexedDB.databases?.().then(list => Promise.all(list.filter(d => d.name).map(d => new Promise(r => { const q = indexedDB.deleteDatabase(d.name!); q.onsuccess = q.onerror = q.onblocked = r; }))));
+      await Dexie.delete('racknotes');
+      if ('caches' in self) for (const k of await caches.keys()) await caches.delete(k);
+      for (const r of (await navigator.serviceWorker?.getRegistrations()) ?? []) await r.unregister();
+      localStorage.clear();
+      sessionStorage.clear();
+    } finally {
+      // Ends the Cloudflare Access session too (no-op in local development).
+      location.replace(location.hostname === 'localhost' ? '/' : '/cdn-cgi/access/logout');
     }
   }
 
@@ -138,8 +160,14 @@
   </div>
 
   <div class="card">
+    <h2 style="font-size: 16px">Това устройство</h2>
+    <p class="muted" style="margin: 0">Преди да дадеш телефона на друг, при напускане или ако си го изгубил и го намериш: изтрива всички данни на клиенти от това устройство и те изписва. Данните на сървъра остават.</p>
+    <button class="btn small danger" style="align-self: flex-start" onclick={wipeDevice}>Изчисти това устройство</button>
+  </div>
+
+  <div class="card">
     <h2 style="font-size: 16px">За приложението</h2>
-    <p class="muted" style="margin: 0">RackNotes {__APP_VERSION__} · оглед, план и 3D на помещенията, синхронизация на екипа. Следват каталог от вашия NetBox и експорт.</p>
+    <p class="muted" style="margin: 0">RackNotes {__APP_VERSION__} · оглед, план и 3D на помещенията, синхронизация на екипа, внос и проверка от NetBox. Следва експорт към NetBox.</p>
     <a href="https://github.com/asenkostov/racknotes" target="_blank" rel="noopener">github.com/asenkostov/racknotes</a>
     <p class="muted" style="margin: 0; font-size: 13px">Каталог на моделите и изгледите им: <a href="https://github.com/netbox-community/devicetype-library" target="_blank" rel="noopener">netbox-community/devicetype-library</a> (CC0).</p>
   </div>

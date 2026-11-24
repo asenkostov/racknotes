@@ -89,3 +89,19 @@ export function fittingPositions(
 }
 
 export const uLabel = (top: number, bottom: number) => (top === bottom ? `U${top}` : `U${top}–${bottom}`);
+
+/**
+ * Where a device goes when the person taps U `at` inside the free gap `top`…`bottom`:
+ * the valid position (lowest U) nearest to having its top edge at the tapped U, or null if it does not fit there.
+ */
+export function nearestFit(rackHeight: number, devices: Placed[], device: Placed, top: number, bottom: number, at: number): number | null {
+  const h = Math.max(1, device.uHeight);
+  const tries: number[] = [];
+  for (let k = 0; k < h + (top - bottom) + 1; k++) for (const p of [at - h + 1 + k, at - h + 1 - k]) if (!tries.includes(p)) tries.push(p);
+  const ok = tries.find(p => p >= 1 && p <= top && p + h - 1 >= bottom && !placementError(rackHeight, devices, { ...device, position: p }));
+  return ok ?? null;
+}
+
+/** The U a tap lands on, from the tap's distance below the top edge of a free gap whose top U is `top`. */
+export const tappedU = (top: number, bottom: number, offsetPx: number, uPx: number) =>
+  Math.min(top, Math.max(bottom, top - Math.floor(Math.max(0, offsetPx) / uPx)));

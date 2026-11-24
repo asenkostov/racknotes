@@ -1,5 +1,6 @@
 # Refreshes public/catalog/devicetypes.json from netbox-community/devicetype-library
-# once a month (and on demand). Commits only when something changed.
+# once a month (and on demand). When something changed it opens a pull request;
+# nothing reaches main (and production) without a review and green CI.
 name: Device type catalog
 
 on:
@@ -9,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   refresh:
@@ -25,11 +27,17 @@ jobs:
           git -C /tmp/dtl ls-tree -r --name-only HEAD elevation-images > /tmp/images.txt
           echo "SHA=$(git -C /tmp/dtl rev-parse HEAD)" >> "$GITHUB_ENV"
       - run: node scripts/build-catalog.mjs /tmp/dtl /tmp/images.txt "$SHA"
-      - name: Commit if changed
+      - name: Open a pull request if changed
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if git diff --quiet -- public/catalog; then echo "No changes"; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c catalog-refresh
           git add public/catalog
           git commit -m "Refresh device type catalog ($SHA)"
-          git push
+          git push --force origin catalog-refresh
+          gh pr view catalog-refresh --json state -q .state 2>/dev/null | grep -q OPEN \
+            || gh pr create --base main --head catalog-refresh --title "Refresh device type catalog" \
+                 --body "Monthly refresh from netbox-community/devicetype-library ($SHA). Review the diff and merge; CI runs on merge."

@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { Device, Face } from '../../core/model.ts';
-  import { placementError, uLabel, usedUnits } from '../../core/rack.ts';
-  import { db, deleteRack, save } from '../lib/db.ts';
+  import { now } from '../../core/model.ts';
+  import { nearestFit, placementError, uLabel, usedUnits } from '../../core/rack.ts';
+  import { db, deleteRack, save, saveMany } from '../lib/db.ts';
   import { live } from '../lib/live.svelte.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast } from '../lib/ui.svelte.ts';
@@ -78,8 +79,16 @@
     await moveTo(moving, moving.position + delta);
   }
   async function flip() {
-    if (!moving) return;
-    await moveTo(moving, moving.position, moving.face === 'front' ? 'rear' : 'front');
+    if (!moving || !rack) return;
+    const d = moving;
+    const f: Face = d.face === 'front' ? 'rear' : 'front';
+    const kids = devices.filter(c => c.parentId === d.id);
+    if (!kids.length) return moveTo(d, d.position, f);
+    // A tray or chassis turned round takes what is inside with it, in one write.
+    const err = placementError(rack.uHeight, placedDevs, { ...d, face: f });
+    if (err) return toast(err);
+    const t = now();
+    await saveMany([{ table: 'devices', rows: $state.snapshot([{ ...d, face: f }, ...kids.map(c => ({ ...c, face: f }))]).map(r => ({ ...r, updatedAt: t })) }]);
   }
   async function unplace() {
     if (moving) await moveTo(moving, 0);
@@ -88,13 +97,9 @@
   async function target(f: Face, top: number, bottom: number, at = top) {
     const d = moving;
     if (!d || !rack) return;
-    const h = Math.max(1, d.uHeight);
     const face = d.fullDepth !== false ? d.face : f;
-    // Positions (lowest U) that cover the tapped U, nearest first: its top at the tapped U, then shifted.
-    const tries: number[] = [];
-    for (let k = 0; k < h + (top - bottom) + 1; k++) for (const p of [at - h + 1 + k, at - h + 1 - k]) if (!tries.includes(p)) tries.push(p);
-    const ok = tries.find(p => p >= 1 && p <= top && p + h - 1 >= bottom && !placementError(rack.uHeight, placedDevs, { ...d, position: p, face }));
-    if (ok === undefined) return toast(`Не се побира: устройството е ${h}U.`);
+    const ok = nearestFit(rack.uHeight, placedDevs, { ...d, face }, top, bottom, at);
+    if (ok === null) return toast(`Не се побира: устройството е ${Math.max(1, d.uHeight)}U.`);
     await moveTo(d, ok, face);
   }
   const vsum = $derived(summary(devices));
@@ -166,9 +171,9 @@
       {#each legend as [role, bg]}<span><i style="background: {bg}"></i>{role}</span>{/each}
       <span><i style="box-shadow: inset 0 0 0 2px var(--accent)"></i>За проверка</span>
       <span><i style="background: repeating-linear-gradient(45deg, #c9d2cf 0 2px, #fff 2px 4px); border: 1px solid #8a979c"></i>Монтирано от другата страна</span>
-      <button class="btn small" style="margin-left: auto; height: 32px" class:dark={moveMode} aria-pressed={moveMode} onclick={() => (moveMode ? stopMove() : startMove())}>{moveMode ? 'Готово' : '↕ Премести'}</button>
+      <button class="btn small" style="margin-left: auto" class:dark={moveMode} aria-pressed={moveMode} onclick={() => (moveMode ? stopMove() : startMove())}>{moveMode ? 'Готово' : '↕ Премести'}</button>
       {#if withImages}
-        <button class="btn small" style="height: 32px" aria-pressed={images} onclick={toggleImages}>{images ? 'Цветове' : 'Изгледи'}</button>
+        <button class="btn small" aria-pressed={images} onclick={toggleImages}>{images ? 'Цветове' : 'Изгледи'}</button>
       {/if}
     </div>
 
@@ -233,6 +238,7 @@
         {/each}
       </div>
     {/if}
+    {#if moveMode}<div class="movepad" aria-hidden="true"></div>{/if}
   </main>
 
   <Sheet bind:open={photosOpen} title={'Снимки · ' + rack.name}>
@@ -257,7 +263,9 @@
 {/if}
 
 <style>
-  .movebar { gap: 8px; position: sticky; top: 8px; z-index: 5; border: 2px solid #f08a4b; }
+  /* Under the thumb, and never over the rack the person is about to tap. */
+  .movebar { gap: 8px; position: fixed; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); z-index: 20; border: 2px solid #f08a4b; max-width: 640px; margin: 0 auto; box-shadow: 0 6px 24px rgb(0 0 0 / 0.18); }
+  .movepad { height: 150px; }
   button.unr { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line-2); font: inherit; text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
   .unr.picked { outline: 3px solid #f08a4b; outline-offset: -3px; }
 

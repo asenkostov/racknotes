@@ -34,7 +34,6 @@ app.use('*', async (c, next) => {
  * ctx.access. The header is set by Access for hostname-based applications.
  */
 async function identify(c: { executionCtx: unknown; req: { header(n: string): string | undefined }; env: Env }) {
-  if (c.env.DEV_USER) return { email: c.env.DEV_USER, source: 'dev' as const };
   if (c.env.ACCESS_TEAM && c.env.ACCESS_AUD) {
     // Strict mode: the identity is whatever the signed Access token says, nothing else.
     const cfg = { team: c.env.ACCESS_TEAM.replace(/\/$/, ''), aud: c.env.ACCESS_AUD.split(',').map(a => a.trim()).filter(Boolean) };
@@ -44,6 +43,8 @@ async function identify(c: { executionCtx: unknown; req: { header(n: string): st
     });
     return email ? { email, source: 'jwt' as const } : null;
   }
+  // Local development only. Never reached in strict mode, so a stray DEV_USER in production cannot bypass Access.
+  if (c.env.DEV_USER) return { email: c.env.DEV_USER, source: 'dev' as const };
   try {
     const access = (c.executionCtx as unknown as { access?: { getIdentity(): Promise<{ email?: string } | undefined> } }).access;
     const email = (await access?.getIdentity())?.email;
@@ -116,7 +117,9 @@ app.get('/blobs/:hash{[0-9a-f]{64}}', async c => {
   return new Response(blob.bytes, {
     headers: {
       'Content-Type': blob.mime,
-      'Cache-Control': 'private, max-age=31536000, immutable',
+      // Client drawings and photos must not linger in the browser's HTTP cache (lost phone, deleted survey).
+      // The app keeps its own copy in IndexedDB, so nothing is lost by not caching here.
+      'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff'
     }
   });
