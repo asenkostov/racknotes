@@ -3,6 +3,7 @@
   import { buildImport, classify, mergeImport } from '../../core/netbox.ts';
   import { db, saveMany } from '../lib/db.ts';
   import { autoLink } from '../lib/catalog.svelte.ts';
+  import { addKnown } from '../lib/known.ts';
   import { importBackup, inspectBackup } from '../lib/backup.ts';
   import { go } from '../lib/router.svelte.ts';
   import { toast, ui } from '../lib/ui.svelte.ts';
@@ -86,10 +87,13 @@
     busy = true;
     try {
       const fresh = $state.snapshot(plan);
+      // Remember what exists in NetBox, for the export later.
+      await addKnown($state.snapshot(files));
       // Refreshing an existing survey: keep everything entered in the field (plans, doors,
       // items, floor placement, edits, verification marks); NetBox updates only its own fields.
-      const byId = async <T extends { id: string }>(table: 'surveys' | 'floors' | 'rooms' | 'racks' | 'devices', ids: string[]) =>
-        new Map(((await db.table(table).bulkGet(ids)).filter(Boolean) as T[]).map(r => [r.id, r]));
+      async function byId<T extends { id: string }>(table: 'surveys' | 'floors' | 'rooms' | 'racks' | 'devices', ids: string[]) {
+        return new Map(((await db.table(table).bulkGet(ids)).filter(Boolean) as T[]).map(r => [r.id, r]));
+      }
       const p = mergeImport(fresh, {
         surveys: await byId('surveys', [fresh.survey.id]),
         floors: await byId('floors', fresh.floors.map(x => x.id)),

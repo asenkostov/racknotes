@@ -23,6 +23,8 @@ export interface Change {
   baseVersion: number;
   deleted: boolean;
   data: Record<string, unknown> | null;
+  /** Restoring from a file: may bring back a record that was deleted on the server. */
+  restore?: boolean;
 }
 
 export interface ServerRecord {
@@ -67,6 +69,7 @@ export function validateChange(c: unknown): string | null {
   if (typeof ch.id !== 'string' || !/^[A-Za-z0-9-]{1,64}$/.test(ch.id)) return 'Невалиден идентификатор.';
   if (!Number.isInteger(ch.baseVersion) || (ch.baseVersion as number) < 0) return 'Невалидна версия.';
   if (typeof ch.deleted !== 'boolean') return 'Невалиден флаг за изтриване.';
+  if (ch.restore !== undefined && typeof ch.restore !== 'boolean') return 'Невалиден флаг за възстановяване.';
   if (!ch.deleted) {
     if (!ch.data || typeof ch.data !== 'object' || Array.isArray(ch.data)) return 'Липсват данни.';
     if (ch.data.id !== ch.id) return 'Идентификаторът в данните не съвпада.';

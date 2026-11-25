@@ -209,7 +209,7 @@ async function runOnce() {
           await db.outbox.delete([e.table, e.id]); // removed locally without a tombstone
           continue;
         }
-        changes.push({ table: e.table, id: e.id, baseVersion: e.baseVersion, deleted: false, data: stripLocal(rec) });
+        changes.push({ table: e.table, id: e.id, baseVersion: e.baseVersion, deleted: false, data: stripLocal(rec), ...(e.restore ? { restore: true } : {}) });
       }
       const cursor = ((await db.kv.get('cursor'))?.value as number | undefined) ?? 0;
       const res = await api('/sync', {

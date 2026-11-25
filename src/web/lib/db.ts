@@ -13,6 +13,8 @@ export interface OutboxEntry {
   baseVersion: number;
   /** Changes on every local edit; lets a sync ack tell whether the record was edited again meanwhile. */
   queuedAt: number;
+  /** Queued by a restore from file: may bring back a record deleted on the server. */
+  restore?: boolean;
 }
 
 /** A record someone else changed while this device had unsent edits to it. */
@@ -84,7 +86,7 @@ const notify = () => listeners.forEach(fn => fn());
 
 async function enqueue(table: SyncTable, id: string, deleted: boolean, version: number | undefined) {
   const existing = await db.outbox.get([table, id]);
-  await db.outbox.put({ table, id, deleted, baseVersion: existing?.baseVersion ?? version ?? 0, queuedAt: nextStamp() });
+  await db.outbox.put({ table, id, deleted, baseVersion: existing?.baseVersion ?? version ?? 0, queuedAt: nextStamp(), ...(existing?.restore && !deleted ? { restore: true } : {}) });
 }
 
 /** Save a record locally, queue it for sync and bump the parent survey's local timestamp. */

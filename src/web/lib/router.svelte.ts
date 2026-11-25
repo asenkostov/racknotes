@@ -4,6 +4,7 @@ export type Route =
   | { name: 'settings' }
   | { name: 'import' }
   | { name: 'survey'; id: string }
+  | { name: 'export'; id: string }
   | { name: 'rack'; id: string }
   | { name: 'room'; id: string }
   | { name: 'plan'; id: string }
@@ -15,6 +16,7 @@ function parse(hash: string): Route {
   const [path, qs = ''] = hash.replace(/^#/, '').split('?');
   const parts = path.split('/').filter(Boolean);
   const params = new URLSearchParams(qs);
+  if (parts[0] === 's' && parts[1] && parts[2] === 'export') return { name: 'export', id: parts[1] };
   if (parts[0] === 's' && parts[1]) return { name: 'survey', id: parts[1] };
   if (parts[0] === 'r' && parts[1]) return { name: 'rack', id: parts[1] };
   if (parts[0] === 'floor' && parts[1]) return { name: 'floor', id: parts[1] };

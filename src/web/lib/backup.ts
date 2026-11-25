@@ -78,7 +78,7 @@ export async function importBackup(file: File): Promise<number> {
         if (typeof row?.id !== 'string') throw new Error('Повреден архив.');
         await db.table(t).put(row);
         // Queue for sync; the server decides whether it is new, known, or deleted and now restored.
-        await db.outbox.put({ table: t, id: row.id, deleted: false, baseVersion: row.version ?? 0, queuedAt: n++ });
+        await db.outbox.put({ table: t, id: row.id, deleted: false, baseVersion: row.version ?? 0, queuedAt: n++, restore: true });
         count++;
       }
     }
